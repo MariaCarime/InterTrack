@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 class AppColors {
   AppColors._();
 
+
   static const Color azul = Color(0xFF0B60E3); // primario
   static const Color azulClaro = Color(0xFFD9E8FF); // chips / fondos azules
   static const Color azulPalido = Color(0xFFEBF0FA); // círculos de estado vacío

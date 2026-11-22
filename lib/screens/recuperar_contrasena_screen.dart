@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intertrack_app/colors.dart';
+import 'package:intertrack_app/models/auth_service.dart'; // aquí vive `supabase`
 import 'package:intertrack_app/widgets.dart';
 
 class RecuperarContrasenaScreen extends StatefulWidget {
@@ -13,6 +14,7 @@ class RecuperarContrasenaScreen extends StatefulWidget {
 class _RecuperarContrasenaScreenState extends State<RecuperarContrasenaScreen> {
   final _correo = TextEditingController();
   bool _enviado = false;
+  bool _enviando = false;
 
   @override
   void dispose() {
@@ -20,17 +22,29 @@ class _RecuperarContrasenaScreenState extends State<RecuperarContrasenaScreen> {
     super.dispose();
   }
 
-  void _enviar() {
+  Future<void> _enviar() async {
     final correo = _correo.text.trim();
     if (!correo.contains('@') || !correo.contains('.')) {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Escribe un correo válido')));
       return;
     }
-    // TODO: await supabase.auth.resetPasswordForEmail(
-    //   correo, redirectTo: 'intertrack://reset-password');
-    // El enlace es de un solo uso y con vigencia limitada (RNF-012).
-    setState(() => _enviado = true);
+    setState(() => _enviando = true);
+    try {
+      // El enlace es de un solo uso y con vigencia limitada (RNF-012).
+      // Mismo esquema y host que el intent-filter del AndroidManifest.
+      await supabase.auth
+          .resetPasswordForEmail(correo, redirectTo: 'intertrack://acceso');
+    } catch (_) {
+      // Se muestra el mismo mensaje exista o no el correo, para no revelar
+      // qué cuentas están registradas.
+    }
+    if (mounted) {
+      setState(() {
+        _enviando = false;
+        _enviado = true;
+      });
+    }
   }
 
   @override
@@ -82,7 +96,9 @@ class _RecuperarContrasenaScreenState extends State<RecuperarContrasenaScreen> {
               keyboardType: TextInputType.emailAddress,
             ),
             const SizedBox(height: 18),
-            PrimaryButton(text: 'Enviar instrucciones', onPressed: _enviar),
+            PrimaryButton(
+                text: 'Enviar instrucciones',
+                onPressed: _enviando ? null : _enviar),
             const SizedBox(height: 18),
             Text(
               _enviado

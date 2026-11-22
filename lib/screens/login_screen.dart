@@ -89,9 +89,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 PrimaryButton(text: 'Iniciar sesión', onPressed: _iniciarSesion),
                 const SizedBox(height: 12),
                 TextButton(
-                  onPressed: () {
-                    // TODO: pantalla 15 (solicitar enlace de recuperación)
-                  },
+                  onPressed: () => Navigator.pushNamed(context, '/recuperar'),
                   child: const Text('¿Olvidaste tu contraseña?',
                       style: TextStyle(
                           color: AppColors.azul,

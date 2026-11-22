@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 final supabase = Supabase.instance.client;
 
 class AuthService {
+  // 1. Agrega esta variable estática al principio de la clase
+  static RolUsuario? rolActual;
+
   Future<Usuario> iniciarSesion(String correo, String contrasena) async {
     await supabase.auth.signInWithPassword(email: correo, password: contrasena);
     final usuario = await obtenerUsuarioActual();
@@ -25,6 +28,10 @@ class AuthService {
         .maybeSingle();
     if (data == null) return null;
     final usuario = Usuario.fromJson(data);
+
+    // 2. Guarda el rol justo antes de regresar el usuario
+    rolActual = usuario.activo ? usuario.rol : null;
+
     return usuario.activo ? usuario : null;
   }
 
@@ -32,6 +39,7 @@ class AuthService {
 }
 
 Future<void> cerrarSesionYSalir(BuildContext context) async {
+  AuthService.rolActual = null; // Limpia el rol al salir
   await AuthService().cerrarSesion();
   if (!context.mounted) return;
   Navigator.of(context).pushNamedAndRemoveUntil('/login', (_) => false);

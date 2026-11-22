@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intertrack_app/theme.dart';
+import 'package:intertrack_app/colors.dart';
+
 import 'package:intertrack_app/models/auth_service.dart';
 import 'package:intertrack_app/models/secure_local_storage.dart';
 
@@ -26,6 +28,8 @@ import 'package:intertrack_app/screens/importar_vista_previa_screen.dart';
 import 'package:intertrack_app/screens/confirmacion_pedido_screen.dart';
 import 'package:intertrack_app/screens/sucursales_screen.dart';
 import 'package:intertrack_app/screens/historial_screen.dart';
+import 'package:intertrack_app/screens/catalogos_screen.dart';
+import 'package:intertrack_app/models/inactividad.dart'; // Asegúrate de que aquí esté el InactividadGuard o el archivo correcto
 
 import 'package:intertrack_app/models/usuario_service.dart';
 final navigatorKey = GlobalKey<NavigatorState>();
@@ -73,11 +77,32 @@ class InterTrackApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-    navigatorKey: navigatorKey,
-    title: 'InterTrack',
+      navigatorKey: navigatorKey,
+      title: 'InterTrack',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
       initialRoute: rutaInicial,
+      // Builder adaptable + InactividadGuard integrado:
+      builder: (context, child) {
+        final escritorio = MediaQuery.of(context).size.width >= 900;
+        return ColoredBox(
+          color: AppColors.fondo,
+          child: Center(
+            child: ConstrainedBox(
+              constraints:
+              BoxConstraints(maxWidth: escritorio ? 1000 : double.infinity),
+              child: MediaQuery(
+                data: MediaQuery.of(context)
+                    .copyWith(textScaler: TextScaler.linear(escritorio ? 1.15 : 1.0)),
+                child: InactividadGuard(
+                  navigatorKey: navigatorKey,
+                  child: child!,
+                ),
+              ),
+            ),
+          ),
+        );
+      },
       routes: {
         '/login': (_) => const LoginScreen(),
         '/dashboard': (_) => const DashboardScreen(),
@@ -111,6 +136,7 @@ class InterTrackApp extends StatelessWidget {
           conCancelar: true,
         ),
         '/importar-vista-previa': (_) => const ImportarVistaPreviaScreen(),
+        '/catalogos': (_) => const CatalogosScreen(),
       },
     );
   }
