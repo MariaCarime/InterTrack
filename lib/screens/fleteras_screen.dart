@@ -1,14 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intertrack_app/colors.dart';
 import 'package:intertrack_app/widgets.dart';
-
-class Fletera {
-  String nombre;
-  String contacto;
-  String tipo; // 'Propia' | 'Externa'
-  bool activo;
-  Fletera(this.nombre, this.contacto, this.tipo, {this.activo = true});
-}
+import 'package:intertrack_app/models/fletera.dart';
+import 'package:intertrack_app/models/fletera_service.dart';
+import 'package:intertrack_app/models/pedido_service.dart';
 
 class FleterasScreen extends StatefulWidget {
   const FleterasScreen({super.key});
@@ -18,9 +13,17 @@ class FleterasScreen extends StatefulWidget {
 }
 
 class _FleterasScreenState extends State<FleterasScreen> {
-  // TODO: cargar desde Supabase (tabla fletera).
-  final List<Fletera> _fleteras = [];
+  final _servicio = FleteraService();
+  List<Fletera> _fleteras = [];
+  bool _cargando = true;
+  String? _error;
   int _filtro = 0; // 0 todas, 1 activas, 2 inactivas
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
 
   List<Fletera> get _visibles => _fleteras.where((f) {
     if (_filtro == 1) return f.activo;
@@ -28,9 +31,31 @@ class _FleterasScreenState extends State<FleterasScreen> {
     return true;
   }).toList();
 
+  void _mensaje(String t) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t)));
+  }
+
+  Future<void> _cargar() async {
+    setState(() {
+      _cargando = true;
+      _error = null;
+    });
+    try {
+      final datos = await _servicio.listar();
+      if (!mounted) return;
+      setState(() => _fleteras = datos);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = mensajeDeError(e));
+    } finally {
+      if (mounted) setState(() => _cargando = false);
+    }
+  }
+
   Future<void> _abrir([Fletera? editar]) async {
     final existentes = _fleteras
-        .where((f) => f != editar)
+        .where((f) => f.idFletera != editar?.idFletera)
         .map((f) => f.nombre.trim().toLowerCase())
         .toList();
 
@@ -40,18 +65,19 @@ class _FleterasScreenState extends State<FleterasScreen> {
     );
     if (r == null) return;
 
-    // TODO: insertar o actualizar en Supabase. Las fleteras no se eliminan:
-    // se desactivan, y una fletera inactiva no aparece al armar camiones.
-    setState(() {
+    // Las fleteras no se eliminan: se desactivan, y una fletera inactiva
+    // no aparece al armar camiones.
+    try {
       if (editar == null) {
-        _fleteras.add(Fletera(r.$1, r.$2, r.$3));
+        await _servicio.crear(r.$1, r.$2, r.$3);
       } else {
-        editar.nombre = r.$1;
-        editar.contacto = r.$2;
-        editar.tipo = r.$3;
-        editar.activo = r.$4;
+        await _servicio.actualizar(editar.idFletera,
+            nombre: r.$1, contacto: r.$2, tipoEtiqueta: r.$3, activo: r.$4);
       }
-    });
+      await _cargar();
+    } catch (e) {
+      _mensaje(mensajeDeError(e));
+    }
   }
 
   @override
@@ -82,7 +108,18 @@ class _FleterasScreenState extends State<FleterasScreen> {
                   ],
                 ),
                 const SizedBox(height: 14),
-                if (lista.isEmpty)
+                if (_cargando)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 40),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (_error != null) ...[
+                  EmptyStateCard(
+                      title: 'No se pudieron cargar las fleteras',
+                      message: _error!),
+                  TextButton(
+                      onPressed: _cargar, child: const Text('Reintentar')),
+                ] else if (lista.isEmpty)
                   EmptyStateCard(
                     title: _fleteras.isEmpty
                         ? 'No hay fleteras registradas'
@@ -92,7 +129,8 @@ class _FleterasScreenState extends State<FleterasScreen> {
                         : 'No hay fleteras con ese filtro.',
                   )
                 else
-                  for (final f in lista) _FleteraCard(f, onTap: () => _abrir(f)),
+                  for (final f in lista)
+                    _FleteraCard(f, onTap: () => _abrir(f)),
                 const SizedBox(height: 16),
                 PrimaryButton(
                     text: '+ Agregar fletera', onPressed: () => _abrir()),
@@ -112,6 +150,7 @@ class _FleteraCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final contacto = f.contacto ?? '';
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Material(
@@ -133,9 +172,9 @@ class _FleteraCard extends StatelessWidget {
                               fontSize: 15, fontWeight: FontWeight.w700)),
                       const SizedBox(height: 2),
                       Text(
-                          f.contacto.isEmpty
-                              ? f.tipo
-                              : '${f.tipo} · ${f.contacto}',
+                          contacto.isEmpty
+                              ? f.tipoEtiqueta
+                              : '${f.tipoEtiqueta} · $contacto',
                           style: const TextStyle(
                               color: AppColors.gris, fontSize: 13)),
                     ],
@@ -178,8 +217,8 @@ class _FleteraDialogState extends State<_FleteraDialog> {
   late final TextEditingController _nombre =
   TextEditingController(text: widget.editar?.nombre);
   late final TextEditingController _contacto =
-  TextEditingController(text: widget.editar?.contacto);
-  late String _tipo = widget.editar?.tipo ?? 'Propia';
+  TextEditingController(text: widget.editar?.contacto ?? '');
+  late String _tipo = widget.editar?.tipoEtiqueta ?? 'Propia';
   late bool _activo = widget.editar?.activo ?? true;
   String? _error;
 
