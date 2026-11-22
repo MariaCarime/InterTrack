@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intertrack_app/colors.dart';
+import 'package:intertrack_app/models/permisos.dart';
 import 'package:intertrack_app/models/pedido_service.dart';
 import 'package:intertrack_app/models/sucursal.dart';
 import 'package:intertrack_app/models/sucursal_service.dart';
@@ -45,17 +46,23 @@ class _SucursalesScreenState extends State<SucursalesScreen> {
         .map((s) => s.nombre.trim().toLowerCase())
         .toList();
 
-    final r = await showDialog<(String, String)>(
+    final siglas = _sucursales
+        .where((s) => s.idSucursal != editar?.idSucursal)
+        .map((s) => s.sigla.toUpperCase())
+        .toList();
+
+    final r = await showDialog<(String, String, String)>(
       context: context,
-      builder: (_) => _SucursalDialog(editar: editar, existentes: existentes),
+      builder: (_) => _SucursalDialog(
+          editar: editar, existentes: existentes, siglasExistentes: siglas),
     );
     if (r == null) return;
 
     try {
       if (editar == null) {
-        await _servicio.crear(r.$1, r.$2);
+        await _servicio.crear(r.$1, r.$2, r.$3);
       } else {
-        await _servicio.actualizar(editar.idSucursal, r.$1, r.$2);
+        await _servicio.actualizar(editar.idSucursal, r.$1, r.$2, r.$3);
       }
       await _cargar();
     } catch (e) {
@@ -98,11 +105,13 @@ class _SucursalesScreenState extends State<SucursalesScreen> {
                       )
                     else
                       for (final s in _sucursales)
-                        _SucursalTile(s, onTap: () => _abrir(s)),
+                        _SucursalTile(s,
+                            onTap: puedeEditarCatalogos() ? () => _abrir(s) : () {}),
                   const SizedBox(height: 16),
-                  PrimaryButton(
-                      text: '+ Registrar nueva sucursal',
-                      onPressed: () => _abrir()),
+                  if (puedeEditarCatalogos())
+                    PrimaryButton(
+                        text: '+ Registrar nueva sucursal',
+                        onPressed: () => _abrir()),
                 ],
               ),
             ),
@@ -136,7 +145,7 @@ class _SucursalTile extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(s.nombre,
+                      Text(s.sigla.isEmpty ? s.nombre : '${s.sigla} · ${s.nombre}',
                           style: const TextStyle(
                               fontSize: 15, fontWeight: FontWeight.w700)),
                       if (s.zona.isNotEmpty) ...[
@@ -162,7 +171,9 @@ class _SucursalTile extends StatelessWidget {
 class _SucursalDialog extends StatefulWidget {
   final Sucursal? editar;
   final List<String> existentes;
-  const _SucursalDialog({this.editar, required this.existentes});
+  final List<String> siglasExistentes;
+  const _SucursalDialog(
+      {this.editar, required this.existentes, required this.siglasExistentes});
 
   @override
   State<_SucursalDialog> createState() => _SucursalDialogState();
@@ -173,6 +184,8 @@ class _SucursalDialogState extends State<_SucursalDialog> {
   TextEditingController(text: widget.editar?.nombre);
   late final TextEditingController _zona =
   TextEditingController(text: widget.editar?.zona);
+  late final TextEditingController _sigla =
+  TextEditingController(text: widget.editar?.sigla);
   String? _error;
 
   bool get _esEdicion => widget.editar != null;
@@ -181,6 +194,7 @@ class _SucursalDialogState extends State<_SucursalDialog> {
   void dispose() {
     _nombre.dispose();
     _zona.dispose();
+    _sigla.dispose();
     super.dispose();
   }
 
@@ -194,7 +208,16 @@ class _SucursalDialogState extends State<_SucursalDialog> {
       setState(() => _error = 'Ya existe una sucursal con ese nombre');
       return;
     }
-    Navigator.pop(context, (nombre, _zona.text.trim()));
+    final sigla = _sigla.text.trim().toUpperCase();
+    if (!RegExp(r'^[A-Z0-9]{2,6}$').hasMatch(sigla)) {
+      setState(() => _error = 'Las siglas son de 2 a 6 letras o números, sin espacios');
+      return;
+    }
+    if (widget.siglasExistentes.contains(sigla)) {
+      setState(() => _error = 'Esas siglas ya las usa otra sucursal');
+      return;
+    }
+    Navigator.pop(context, (nombre, _zona.text.trim(), sigla));
   }
 
   @override
@@ -222,6 +245,11 @@ class _SucursalDialogState extends State<_SucursalDialog> {
               Text(_error!,
                   style: const TextStyle(color: AppColors.rojo, fontSize: 12)),
             ],
+            const SizedBox(height: 14),
+            AppTextField(
+                label: 'Siglas',
+                hint: 'Ej. CRCR (van al inicio de la factura)',
+                controller: _sigla),
             const SizedBox(height: 14),
             AppTextField(
                 label: 'Zona',

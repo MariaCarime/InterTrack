@@ -47,9 +47,11 @@ class _CrearContrasenaScreenState extends State<CrearContrasenaScreen> {
   }
 
   bool get _longitudOk => _nueva.text.length >= 8;
+  bool get _letraOk => RegExp(r'[A-Za-z]').hasMatch(_nueva.text);
+  bool get _numeroOk => RegExp(r'[0-9]').hasMatch(_nueva.text);
   bool get _coincideOk =>
       _confirmar.text.isNotEmpty && _nueva.text == _confirmar.text;
-  bool get _valida => _longitudOk && _coincideOk;
+  bool get _valida => _longitudOk && _letraOk && _numeroOk && _coincideOk;
 
   Future<void> _activar() async {
     setState(() => _guardando = true);
@@ -110,7 +112,7 @@ class _CrearContrasenaScreenState extends State<CrearContrasenaScreen> {
             const SizedBox(height: 20),
             AppTextField(
               label: 'Nueva contraseña',
-              hint: 'Mínimo 8 caracteres',
+              hint: 'Mínimo 8 caracteres, letras y números',
               controller: _nueva,
               obscure: _ocultar,
               suffix: ojo,
@@ -124,6 +126,8 @@ class _CrearContrasenaScreenState extends State<CrearContrasenaScreen> {
             ),
             const SizedBox(height: 14),
             _requisito('Mínimo 8 caracteres', _longitudOk),
+            _requisito('Al menos una letra', _letraOk),
+            _requisito('Al menos un número', _numeroOk),
             _requisito('Ambas contraseñas deben coincidir', _coincideOk),
             const SizedBox(height: 14),
             PrimaryButton(

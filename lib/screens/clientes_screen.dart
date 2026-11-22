@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intertrack_app/colors.dart';
+import 'package:intertrack_app/models/permisos.dart';
 import 'package:intertrack_app/widgets.dart';
 import 'package:intertrack_app/models/cliente.dart';
 import 'package:intertrack_app/models/cliente_service.dart';
@@ -131,11 +132,13 @@ class _ClientesScreenState extends State<ClientesScreen> {
                   )
                 else
                   for (final c in lista)
-                    _ClienteCard(c, onTap: () => _abrirFormulario(c)),
+                    _ClienteCard(c,
+                        onTap: puedeEditarCatalogos() ? () => _abrirFormulario(c) : () {}),
                 const SizedBox(height: 16),
-                PrimaryButton(
-                    text: '+ Registrar nuevo cliente',
-                    onPressed: _abrirFormulario),
+                if (puedeEditarCatalogos())
+                  PrimaryButton(
+                      text: '+ Registrar nuevo cliente',
+                      onPressed: _abrirFormulario),
               ],
             ),
           ),

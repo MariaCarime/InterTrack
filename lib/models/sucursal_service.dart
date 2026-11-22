@@ -7,13 +7,17 @@ class SucursalService {
     return datos.map<Sucursal>((j) => Sucursal.fromJson(j)).toList();
   }
 
-  Future<void> crear(String nombre, String zona) async {
-    await supabase.from('sucursal').insert({'nombre': nombre, 'zona': zona});
-  }
-
-  Future<void> actualizar(int idSucursal, String nombre, String zona) async {
+  Future<void> crear(String nombre, String zona, String sigla) async {
     await supabase
         .from('sucursal')
-        .update({'nombre': nombre, 'zona': zona}).eq('id_sucursal', idSucursal);
+        .insert({'nombre': nombre, 'zona': zona, 'sigla': sigla});
+  }
+
+  Future<void> actualizar(
+      int idSucursal, String nombre, String zona, String sigla) async {
+    await supabase
+        .from('sucursal')
+        .update({'nombre': nombre, 'zona': zona, 'sigla': sigla}).eq(
+        'id_sucursal', idSucursal);
   }
 }

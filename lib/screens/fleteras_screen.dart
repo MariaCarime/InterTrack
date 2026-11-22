@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intertrack_app/colors.dart';
+import 'package:intertrack_app/models/permisos.dart';
 import 'package:intertrack_app/widgets.dart';
 import 'package:intertrack_app/models/fletera.dart';
 import 'package:intertrack_app/models/fletera_service.dart';
@@ -59,7 +60,7 @@ class _FleterasScreenState extends State<FleterasScreen> {
         .map((f) => f.nombre.trim().toLowerCase())
         .toList();
 
-    final r = await showDialog<(String, String, String, bool)>(
+    final r = await showDialog<(String, String, String, bool, double?)>(
       context: context,
       builder: (_) => _FleteraDialog(editar: editar, existentes: existentes),
     );
@@ -69,10 +70,11 @@ class _FleterasScreenState extends State<FleterasScreen> {
     // no aparece al armar camiones.
     try {
       if (editar == null) {
-        await _servicio.crear(r.$1, r.$2, r.$3);
+        await _servicio.crear(r.$1, r.$2, r.$3, r.$5);
       } else {
         await _servicio.actualizar(editar.idFletera,
-            nombre: r.$1, contacto: r.$2, tipoEtiqueta: r.$3, activo: r.$4);
+            nombre: r.$1, contacto: r.$2, tipoEtiqueta: r.$3, activo: r.$4,
+            tarifaTonelada: r.$5);
       }
       await _cargar();
     } catch (e) {
@@ -130,10 +132,12 @@ class _FleterasScreenState extends State<FleterasScreen> {
                   )
                 else
                   for (final f in lista)
-                    _FleteraCard(f, onTap: () => _abrir(f)),
+                    _FleteraCard(f,
+                        onTap: puedeEditarCatalogos() ? () => _abrir(f) : () {}),
                 const SizedBox(height: 16),
-                PrimaryButton(
-                    text: '+ Agregar fletera', onPressed: () => _abrir()),
+                if (puedeEditarCatalogos())
+                  PrimaryButton(
+                      text: '+ Agregar fletera', onPressed: () => _abrir()),
               ],
             ),
           ),
@@ -151,6 +155,9 @@ class _FleteraCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final contacto = f.contacto ?? '';
+    final tarifa = f.tarifaTonelada == null
+        ? ''
+        : r' · $' + f.tarifaTonelada!.toStringAsFixed(2) + '/ton';
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Material(
@@ -172,9 +179,9 @@ class _FleteraCard extends StatelessWidget {
                               fontSize: 15, fontWeight: FontWeight.w700)),
                       const SizedBox(height: 2),
                       Text(
-                          contacto.isEmpty
+                          (contacto.isEmpty
                               ? f.tipoEtiqueta
-                              : '${f.tipoEtiqueta} · $contacto',
+                              : '${f.tipoEtiqueta} · $contacto') + tarifa,
                           style: const TextStyle(
                               color: AppColors.gris, fontSize: 13)),
                     ],
@@ -220,6 +227,8 @@ class _FleteraDialogState extends State<_FleteraDialog> {
   TextEditingController(text: widget.editar?.contacto ?? '');
   late String _tipo = widget.editar?.tipoEtiqueta ?? 'Propia';
   late bool _activo = widget.editar?.activo ?? true;
+  late final TextEditingController _tarifa = TextEditingController(
+      text: widget.editar?.tarifaTonelada?.toStringAsFixed(2) ?? '');
   String? _error;
 
   bool get _esEdicion => widget.editar != null;
@@ -228,6 +237,7 @@ class _FleteraDialogState extends State<_FleteraDialog> {
   void dispose() {
     _nombre.dispose();
     _contacto.dispose();
+    _tarifa.dispose();
     super.dispose();
   }
 
@@ -241,7 +251,16 @@ class _FleteraDialogState extends State<_FleteraDialog> {
       setState(() => _error = 'Ya existe una fletera con ese nombre');
       return;
     }
-    Navigator.pop(context, (nombre, _contacto.text.trim(), _tipo, _activo));
+    final textoTarifa = _tarifa.text.trim().replaceAll(',', '.');
+    double? tarifa;
+    if (textoTarifa.isNotEmpty) {
+      tarifa = double.tryParse(textoTarifa);
+      if (tarifa == null || tarifa < 0) {
+        setState(() => _error = 'La tarifa por tonelada debe ser un número positivo');
+        return;
+      }
+    }
+    Navigator.pop(context, (nombre, _contacto.text.trim(), _tipo, _activo, tarifa));
   }
 
   Widget _chipTipo(String t) {
@@ -294,6 +313,13 @@ class _FleteraDialogState extends State<_FleteraDialog> {
                 hint: 'Teléfono',
                 controller: _contacto,
                 keyboardType: TextInputType.phone),
+            const SizedBox(height: 14),
+            AppTextField(
+                label: 'Tarifa por tonelada (MXN, sin IVA)',
+                hint: 'Ej. 850.00',
+                controller: _tarifa,
+                keyboardType:
+                const TextInputType.numberWithOptions(decimal: true)),
             const SizedBox(height: 14),
             Row(children: [
               _chipTipo('Propia'),

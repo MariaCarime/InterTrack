@@ -10,11 +10,13 @@ class FleteraService {
     return datos.map<Fletera>((j) => Fletera.fromJson(j)).toList();
   }
 
-  Future<void> crear(String nombre, String contacto, String tipoEtiqueta) async {
+  Future<void> crear(String nombre, String contacto, String tipoEtiqueta,
+      double? tarifaTonelada) async {
     await supabase.from('fletera').insert({
       'nombre': nombre.trim(),
       'contacto': _limpiar(contacto),
       'tipo': tipoEtiqueta.toLowerCase(),
+      'tarifa_tonelada': tarifaTonelada,
     });
   }
 
@@ -24,12 +26,14 @@ class FleteraService {
         required String contacto,
         required String tipoEtiqueta,
         required bool activo,
+        double? tarifaTonelada,
       }) async {
     await supabase.from('fletera').update({
       'nombre': nombre.trim(),
       'contacto': _limpiar(contacto),
       'tipo': tipoEtiqueta.toLowerCase(),
       'activo': activo,
+      'tarifa_tonelada': tarifaTonelada,
     }).eq('id_fletera', idFletera);
   }
 
