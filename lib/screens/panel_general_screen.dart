@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:intertrack_app/colors.dart';
 import 'package:intertrack_app/models/consulta_service.dart';
 import 'package:intertrack_app/models/pedido_service.dart';
+import 'package:intertrack_app/models/pedido.dart';
+import 'package:intertrack_app/screens/seguimiento_pedido_screen.dart';
 import 'package:intertrack_app/widgets.dart';
 
 class PanelGeneralScreen extends StatefulWidget {
@@ -14,6 +16,7 @@ class PanelGeneralScreen extends StatefulWidget {
 class _PanelGeneralScreenState extends State<PanelGeneralScreen> {
   final _servicio = ConsultaService();
   MetricasGenerales? _m;
+  List<Pedido> _recientes = [];
   bool _cargando = true;
   String? _error;
 
@@ -30,7 +33,13 @@ class _PanelGeneralScreenState extends State<PanelGeneralScreen> {
     });
     try {
       final m = await _servicio.metricas();
-      if (mounted) setState(() => _m = m);
+      final recientes = await PedidoService().listar(limite: 8);
+      if (mounted) {
+        setState(() {
+          _m = m;
+          _recientes = recientes;
+        });
+      }
     } catch (e) {
       if (mounted) setState(() => _error = mensajeDeError(e));
     } finally {
@@ -114,6 +123,70 @@ class _PanelGeneralScreenState extends State<PanelGeneralScreen> {
                     else
                       for (final s in m.porSucursal) _FilaSucursal(s),
                   const SizedBox(height: 20),
+                  const Text('Pedidos recientes',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 12),
+                  if (_recientes.isEmpty && !_cargando)
+                    const EmptyStateCard(
+                      title: 'No hay pedidos registrados',
+                      message: 'Cuando se registre un pedido aparecerá aquí.',
+                    )
+                  else
+                    for (final p in _recientes)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Material(
+                          color: AppColors.blanco,
+                          borderRadius: BorderRadius.circular(14),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(14),
+                            onTap: () async {
+                              await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (_) =>
+                                        SeguimientoPedidoScreen(idPedido: p.idPedido)),
+                              );
+                              _cargar();
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.all(14),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(p.folio,
+                                            style: const TextStyle(
+                                                fontSize: 15, fontWeight: FontWeight.w700)),
+                                        Text('${p.cliente} · ${p.asesor}',
+                                            style: const TextStyle(
+                                                color: AppColors.gris, fontSize: 13)),
+                                        const SizedBox(height: 4),
+                                        Text(p.estado,
+                                            style: const TextStyle(
+                                                color: AppColors.azul,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600)),
+                                      ],
+                                    ),
+                                  ),
+                                  const Icon(Icons.chevron_right, color: AppColors.gris),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  Center(
+                    child: TextButton(
+                      onPressed: () =>
+                          Navigator.pushReplacementNamed(context, '/reportes'),
+                      child: const Text('Ver todos los pedidos'),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   for (final o in opciones)
                     _OpcionMenu(
                         texto: o.$1, onTap: () => _abrir(context, o.$2)),

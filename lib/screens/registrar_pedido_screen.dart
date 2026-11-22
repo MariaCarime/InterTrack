@@ -8,6 +8,7 @@ import 'package:intertrack_app/models/articulo.dart';
 import 'package:intertrack_app/models/cliente.dart';
 import 'package:intertrack_app/models/pedido.dart';
 import 'package:intertrack_app/models/pedido_service.dart';
+import 'package:intertrack_app/models/solicitud_service.dart';
 import 'package:intertrack_app/screens/confirmacion_pedido_screen.dart';
 
 class _LineaForm {
@@ -28,6 +29,7 @@ class RegistrarPedidoScreen extends StatefulWidget {
 class _RegistrarPedidoScreenState extends State<RegistrarPedidoScreen> {
   final _servicio = PedidoService();
   final _numeroFactura = TextEditingController();
+  final _notaPlanta = TextEditingController();
   final List<_LineaForm> _lineas = [_LineaForm()];
 
   List<Cliente> _clientes = [];
@@ -71,6 +73,7 @@ class _RegistrarPedidoScreenState extends State<RegistrarPedidoScreen> {
   @override
   void dispose() {
     _numeroFactura.dispose();
+    _notaPlanta.dispose();
     for (final l in _lineas) {
       l.dispose();
     }
@@ -157,9 +160,36 @@ class _RegistrarPedidoScreenState extends State<RegistrarPedidoScreen> {
 
   /// Corre la verificación de asignación sin que nadie tenga que pulsar nada.
   /// Si falla, el pedido queda Pendiente y se puede verificar desde Seguimiento.
-  Future<String> _verificarAuto(int idPedido) async {
+  Future<String> _verificarAuto(int idPedido, {String nota = ''}) async {
     try {
+      // Se consulta antes de aplicar para saber qué material no está asignado.
+      var faltantes = <VerificacionLinea>[];
+      try {
+        final lineas = await _servicio.verificarAsignacion(idPedido);
+        faltantes = lineas.where((l) => l.estado == 'sin_asignar').toList();
+      } catch (_) {}
+
       final r = await _servicio.aplicarVerificacion(idPedido);
+
+      if (r == 'solicitud') {
+        // Planta recibe, como comentarios, qué material se necesita y la nota.
+        try {
+          final sol = SolicitudService();
+          final lista = await sol.delPedido(idPedido);
+          final pendientes = lista.where((x) => x.estado == 'pendiente');
+          if (pendientes.isNotEmpty) {
+            final idOrden = pendientes.first.idOrden;
+            final textos = <String>[
+              for (final l in faltantes)
+                'Se necesitan ${l.cantidad > l.asignado ? l.cantidad - l.asignado : l.cantidad} cajas de ${l.codigo} (${l.descripcion}). Asignado: ${l.asignado}, disponible: ${l.disponible}.',
+              if (nota.trim().isNotEmpty) nota.trim(),
+            ];
+            for (final t in textos) {
+              await sol.comentar(idOrden, t.length > 500 ? t.substring(0, 500) : t);
+            }
+          }
+        } catch (_) {}
+      }
       return switch (r) {
         'solicitud' => 'Pedido registrado. Solicitud enviada a Planta',
         'en_pausa' => 'Pedido registrado. Quedó En Pausa por falta de material',
@@ -220,7 +250,7 @@ class _RegistrarPedidoScreenState extends State<RegistrarPedidoScreen> {
         urgente: _urgente,
         lineas: lineas,
       );
-      final aviso = await _verificarAuto(r.idPedido);
+      final aviso = await _verificarAuto(r.idPedido, nota: _notaPlanta.text);
       if (!mounted) return;
       _mensaje(aviso);
       Navigator.pushReplacement(
@@ -380,6 +410,14 @@ class _RegistrarPedidoScreenState extends State<RegistrarPedidoScreen> {
                     ],
                   ),
                 ),
+                if (!_esEdicion) ...[
+                  const SizedBox(height: 16),
+                  AppTextField(
+                    label: 'Nota para Planta (opcional)',
+                    hint: 'Se envía con la solicitud si falta material asignado',
+                    controller: _notaPlanta,
+                  ),
+                ],
                 const SizedBox(height: 10),
                 const Text(
                     'El folio se genera automáticamente al guardar.',

@@ -65,6 +65,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final pendientes = _conteo['Pendiente'] ?? 0;
     final espPlanta = _conteo['Esperando Aprobación de Planta'] ?? 0;
     final listos = _conteo['Aprobado/Listo para Cargar'] ?? 0;
+    final enPausa = _conteo['En Pausa'] ?? 0;
 
     return Scaffold(
       bottomNavigationBar: const AppBottomNav(currentIndex: 0),
@@ -89,13 +90,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               valor: pendientes,
                               etiqueta: 'Pendientes',
                               color: AppColors.naranja)),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 8),
+                      Expanded(
+                          child: _StatCard(
+                              valor: enPausa,
+                              etiqueta: 'En pausa',
+                              color: AppColors.rojo)),
+                      const SizedBox(width: 8),
                       Expanded(
                           child: _StatCard(
                               valor: espPlanta,
                               etiqueta: 'Esp. Planta',
-                              color: AppColors.rojo)),
-                      const SizedBox(width: 10),
+                              color: AppColors.naranja)),
+                      const SizedBox(width: 8),
                       Expanded(
                           child: _StatCard(
                               valor: listos,
@@ -104,7 +111,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ],
                   ),
                   const SizedBox(height: 24),
-                  const Text('Pedidos recientes',
+                  const Text('Pedidos recientes (los 10 últimos)',
                       style:
                       TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 12),
@@ -128,7 +135,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   else
                     for (final p in _recientes)
                       _PedidoCard(p, onTap: () => _abrirPedido(p)),
-                  const SizedBox(height: 20),
+                  if (_recientes.isNotEmpty)
+                    Center(
+                      child: TextButton(
+                        onPressed: () =>
+                            Navigator.pushReplacementNamed(context, '/reportes'),
+                        child: const Text('Ver todos los pedidos'),
+                      ),
+                    ),
+                  const SizedBox(height: 12),
                   PrimaryButton(
                     text: '+ Registrar nuevo pedido',
                     onPressed: _nuevoPedido,
