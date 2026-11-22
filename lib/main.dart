@@ -91,7 +91,8 @@ class InterTrackApp extends StatelessWidget {
         '/fleteras': (_) => const FleterasScreen(),
         '/reportes': (_) => const ReportesScreen(),
         '/recuperar': (_) => const RecuperarContrasenaScreen(),
-        '/documento': (_) => const DocumentoTripScreen(),
+        '/documento': (ctx) => DocumentoTripScreen(
+            idCamion: ModalRoute.of(ctx)?.settings.arguments as int?),
         '/general': (_) => const PanelGeneralScreen(),
         '/asesor': (_) => const VistaAsesorScreen(),
         '/usuarios': (_) => const UsuariosRolesScreen(),

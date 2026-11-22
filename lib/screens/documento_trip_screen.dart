@@ -1,52 +1,88 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:intertrack_app/models/archivos.dart';
 import 'package:intertrack_app/colors.dart';
 import 'package:intertrack_app/widgets.dart';
+import 'package:intertrack_app/models/camion.dart';
+import 'package:intertrack_app/models/camion_service.dart';
+import 'package:intertrack_app/models/pedido_service.dart';
+import 'package:intertrack_app/models/trip_pdf.dart';
 
-class LineaTrip {
-  final String folio;
-  final String codigo;
-  final int cajas;
-  final int parrillas;
-  final String lote;
-  final double toneladas;
-  const LineaTrip({
-    required this.folio,
-    required this.codigo,
-    required this.cajas,
-    required this.parrillas,
-    required this.lote,
-    required this.toneladas,
-  });
+class DocumentoTripScreen extends StatefulWidget {
+  final int? idCamion;
+  const DocumentoTripScreen({super.key, this.idCamion});
+
+  @override
+  State<DocumentoTripScreen> createState() => _DocumentoTripScreenState();
 }
 
-class DocumentoTripScreen extends StatelessWidget {
-  final String nombreArchivo;
-  final String origen;
-  final String destino;
-  final String fletera;
-  final double pesoTotal;
-  final List<LineaTrip> lineas;
+class _DocumentoTripScreenState extends State<DocumentoTripScreen> {
+  final _servicio = CamionService();
+  DatosTrip? _datos;
+  bool _cargando = true;
+  bool _descargando = false;
+  String? _error;
 
-  const DocumentoTripScreen({
-    super.key,
-    this.nombreArchivo = 'Trip_XXXX.pdf',
-    this.origen = 'Planta de origen',
-    this.destino = 'CEDIS destino',
-    this.fletera = 'Nombre de la fletera',
-    this.pesoTotal = 0,
-    this.lineas = const [],
-  });
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
 
-  void _descargar(BuildContext context) {
-    // TODO: obtener la ruta de camion.ruta_pdf, pedir una URL firmada del
-    // bucket privado 'trips' y abrir o guardar el archivo.
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('Descargando PDF...')));
+  void _mensaje(String t) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t)));
+  }
+
+  Future<void> _cargar() async {
+    final id = widget.idCamion;
+    if (id == null) {
+      setState(() => _cargando = false);
+      return;
+    }
+    setState(() {
+      _cargando = true;
+      _error = null;
+    });
+    try {
+      final datos = await _servicio.datosTrip(id);
+      if (!mounted) return;
+      setState(() => _datos = datos);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = mensajeDeError(e));
+    } finally {
+      if (mounted) setState(() => _cargando = false);
+    }
+  }
+
+  Future<void> _descargar() async {
+    final d = _datos;
+    if (d == null) return;
+    setState(() => _descargando = true);
+    try {
+      Uint8List bytes;
+      try {
+        // Si el PDF ya está guardado en Supabase se usa ese; si no, se genera.
+        bytes = d.rutaPdf != null
+            ? await _servicio.descargarPdf(d.rutaPdf!)
+            : await construirTripPdf(d);
+      } catch (_) {
+        bytes = await construirTripPdf(d);
+      }
+      final ruta = await guardarArchivo(d.nombreArchivo, bytes);
+      if (ruta != null) _mensaje('PDF guardado');
+    } catch (e) {
+      _mensaje('No se pudo abrir el PDF: ${mensajeDeError(e)}');
+    } finally {
+      if (mounted) setState(() => _descargando = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     const gris = TextStyle(color: AppColors.gris, fontSize: 13);
+    final d = _datos;
 
     return Scaffold(
       body: Column(
@@ -54,10 +90,24 @@ class DocumentoTripScreen extends StatelessWidget {
           BlueHeader(
             onBack: () => Navigator.pop(context),
             subtitle: 'Vista previa del documento',
-            title: nombreArchivo,
+            title: d?.nombreArchivo ?? 'Trip_XXXX.pdf',
           ),
           Expanded(
-            child: ListView(
+            child: _cargando
+                ? const Center(child: CircularProgressIndicator())
+                : _error != null
+                ? ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                EmptyStateCard(
+                    title: 'No se pudo cargar el documento',
+                    message: _error!),
+                TextButton(
+                    onPressed: _cargar,
+                    child: const Text('Reintentar')),
+              ],
+            )
+                : ListView(
               padding: const EdgeInsets.all(20),
               children: [
                 Container(
@@ -72,43 +122,53 @@ class DocumentoTripScreen extends StatelessWidget {
                     children: [
                       const Text('TRIP / PREVIO',
                           style: TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.w700)),
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700)),
                       const SizedBox(height: 12),
-                      Text('Origen: $origen  →  Destino: $destino',
+                      Text(
+                          'Origen: ${d?.origen ?? (d == null ? 'Planta de origen' : 'No indicado')}  →  Destino: ${d?.destino ?? 'CEDIS destino'}',
                           style: gris),
                       const SizedBox(height: 8),
-                      Text('Fletera: $fletera', style: gris),
+                      Text('Fletera: ${d?.fletera ?? 'Nombre de la fletera'}',
+                          style: gris),
                       const SizedBox(height: 8),
-                      Text('Peso total: ${pesoTotal.toStringAsFixed(1)} / 35 ton',
+                      Text(
+                          'Peso total: ${(d?.toneladas ?? 0).toStringAsFixed(1)} / 35 ton',
                           style: gris),
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: 10),
-                        child: Divider(height: 1, color: AppColors.borde),
+                        child: Divider(
+                            height: 1, color: AppColors.borde),
                       ),
                       const Text('Materiales incluidos:',
                           style: TextStyle(
-                              fontSize: 13, fontWeight: FontWeight.w700)),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700)),
                       const SizedBox(height: 8),
-                      if (lineas.isEmpty)
+                      if (d == null || d.lineas.isEmpty)
                         const Text(
                             '• F-AAAA-XXXX · Código · Cajas · Parrillas · Lote · Ton',
                             style: TextStyle(
                                 color: AppColors.gris, fontSize: 12))
                       else
-                        for (final l in lineas)
+                        for (final l in d.lineas)
                           Padding(
                             padding: const EdgeInsets.only(bottom: 6),
                             child: Text(
-                                '• ${l.folio} · ${l.codigo} · ${l.cajas} cajas · ${l.parrillas} parrillas · ${l.lote} · ${l.toneladas.toStringAsFixed(1)} ton',
+                                '• ${l.folio} · ${l.codigo} · ${l.cajas} cajas · ${l.parrillas ?? '-'} parrillas · ${l.lote ?? '-'} · ${l.toneladas.toStringAsFixed(1)} ton',
                                 style: const TextStyle(
-                                    color: AppColors.gris, fontSize: 12)),
+                                    color: AppColors.gris,
+                                    fontSize: 12)),
                           ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 14),
                 PrimaryButton(
-                    text: 'Descargar PDF', onPressed: () => _descargar(context)),
+                  text: _descargando ? 'Abriendo...' : 'Descargar PDF',
+                  onPressed:
+                  (d == null || _descargando) ? null : _descargar,
+                ),
               ],
             ),
           ),
