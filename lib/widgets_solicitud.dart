@@ -223,3 +223,94 @@ class _SolicitudesPedidoState extends State<SolicitudesPedido> {
     );
   }
 }
+
+/// Solicitudes de reposición de stock con su estado y comentarios.
+class SolicitudesStock extends StatefulWidget {
+  const SolicitudesStock({super.key});
+
+  @override
+  State<SolicitudesStock> createState() => _SolicitudesStockState();
+}
+
+class _SolicitudesStockState extends State<SolicitudesStock> {
+  final _servicio = SolicitudService();
+  List<SolicitudDePedido> _solicitudes = [];
+  bool _cargando = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  Future<void> _cargar() async {
+    try {
+      final datos = await _servicio.deStock();
+      if (mounted) setState(() => _solicitudes = datos);
+    } catch (_) {
+      // Sin permiso o sin conexión: la sección no aparece.
+    } finally {
+      if (mounted) setState(() => _cargando = false);
+    }
+  }
+
+  Color _color(String estado) => switch (estado) {
+    'aprobado' => AppColors.verde,
+    'rechazado' => AppColors.rojo,
+    _ => AppColors.naranja,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    if (_cargando || _solicitudes.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Mis solicitudes de stock',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 10),
+        for (final s in _solicitudes)
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AppColors.blanco,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                    s.fecha == null
+                        ? s.etiquetaEstado
+                        : '${s.etiquetaEstado} · ${formatoFecha(s.fecha!)}',
+                    style: TextStyle(
+                        color: _color(s.estado),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700)),
+                const SizedBox(height: 8),
+                for (final l in s.lineas)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text(
+                        '${l.codigo}${(l.descripcion ?? '').isEmpty ? '' : ' · ${l.descripcion}'}  —  ${l.cantidad} cajas',
+                        style: const TextStyle(fontSize: 13)),
+                  ),
+                if ((s.motivoRechazo ?? '').isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text('Motivo del rechazo: ${s.motivoRechazo}',
+                      style: const TextStyle(color: AppColors.rojo, fontSize: 12)),
+                ],
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 10),
+                  child: Divider(height: 1, color: AppColors.borde),
+                ),
+                ComentariosSolicitud(idOrden: s.idOrden),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}

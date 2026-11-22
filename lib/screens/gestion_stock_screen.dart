@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intertrack_app/colors.dart';
 import 'package:intertrack_app/widgets.dart';
+import 'package:intertrack_app/widgets_solicitud.dart';
+import 'package:intertrack_app/widgets_stock.dart';
 import 'package:intertrack_app/models/pedido_service.dart';
 import 'package:intertrack_app/models/stock.dart';
 import 'package:intertrack_app/models/stock_service.dart';
@@ -19,6 +21,7 @@ class _GestionStockScreenState extends State<GestionStockScreen> {
   List<MaterialStock> _enReposicion = [];
   bool _hayMateriales = false;
   bool _cargando = true;
+  bool _procesando = false;
   String? _error;
 
   @override
@@ -59,12 +62,17 @@ class _GestionStockScreenState extends State<GestionStockScreen> {
   }
 
   Future<void> _accion(MaterialStock m) async {
+    if (_procesando) return;
+    setState(() => _procesando = true);
     try {
       final r = await _servicio.crearOrden(m.codigo);
       await _cargar();
       _mensaje(r == 'orden' ? 'Orden de compra generada' : 'Solicitud enviada a Planta');
     } catch (e) {
       _mensaje(mensajeDeError(e));
+      await _cargar();
+    } finally {
+      if (mounted) setState(() => _procesando = false);
     }
   }
 
@@ -88,9 +96,15 @@ class _GestionStockScreenState extends State<GestionStockScreen> {
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.all(20),
                 children: [
-                  const Text('Materiales por debajo de su punto de reorden',
+                  const InventarioCedis(),
+                  const SizedBox(height: 28),
+                  const Text('Reposición',
                       style:
                       TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 4),
+                  const Text(
+                      'Materiales cuyo stock en el CEDIS bajó de su punto de reorden. Aparecen aquí con su botón para pedirlos a Planta.',
+                      style: TextStyle(color: AppColors.gris, fontSize: 12)),
                   const SizedBox(height: 12),
                   if (_cargando)
                     const Padding(
@@ -112,11 +126,13 @@ class _GestionStockScreenState extends State<GestionStockScreen> {
                       const EmptyStateCard(
                         title: 'Sin reposiciones pendientes',
                         message:
-                        'Todos los materiales están por encima de su punto de reorden.',
+                        'Todos los materiales están por encima de su punto de reorden. Si esperabas ver alguno, revisa que el catálogo traiga punto_reorden y stock_ideal.',
                       )
                     else ...[
                         for (final m in lista)
-                          _MaterialCard(m, onAccion: () => _accion(m)),
+                          _MaterialCard(m,
+                              bloqueado: _procesando,
+                              onAccion: () => _accion(m)),
                         Container(
                           width: double.infinity,
                           padding: const EdgeInsets.all(16),
@@ -144,6 +160,10 @@ class _GestionStockScreenState extends State<GestionStockScreen> {
                       ],
                   const SizedBox(height: 16),
                   PrimaryButton(
+                      text: 'Ver existencias de Planta',
+                      onPressed: () => Navigator.pushNamed(context, '/existencias')),
+                  const SizedBox(height: 10),
+                  PrimaryButton(
                       text: 'Asignados de Planta',
                       onPressed: () => Navigator.pushNamed(context, '/asignados')),
                   const SizedBox(height: 10),
@@ -168,6 +188,8 @@ class _GestionStockScreenState extends State<GestionStockScreen> {
                         child: const Text('Importar catálogo (Excel / CSV)'),
                       ),
                     ),
+                  const SizedBox(height: 24),
+                  SolicitudesStock(key: ValueKey('stock-$_cargando')),
                 ],
               ),
             ),
@@ -181,7 +203,9 @@ class _GestionStockScreenState extends State<GestionStockScreen> {
 class _MaterialCard extends StatelessWidget {
   final MaterialStock m;
   final VoidCallback onAccion;
-  const _MaterialCard(this.m, {required this.onAccion});
+  final bool bloqueado;
+  const _MaterialCard(this.m,
+      {required this.onAccion, required this.bloqueado});
 
   String _kg(double v) => v.toStringAsFixed(v % 1 == 0 ? 0 : 1);
 
@@ -207,7 +231,7 @@ class _MaterialCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                  child: Text('Existencia: ${m.disponible} cajas', style: gris)),
+                  child: Text('En el CEDIS: ${m.disponible} cajas', style: gris)),
               Text('Ideal: ${m.stockIdeal} cajas', style: gris),
             ],
           ),
@@ -230,9 +254,9 @@ class _MaterialCard extends StatelessWidget {
           const SizedBox(height: 10),
           PrimaryButton(
             text: m.pendiente
-                ? 'Solicitud pendiente de Planta'
+                ? 'Reposición ya solicitada'
                 : (m.asignadoCubre ? 'Generar OC' : 'Solicitar a Planta'),
-            onPressed: m.pendiente ? null : onAccion,
+            onPressed: (m.pendiente || bloqueado) ? null : onAccion,
           ),
         ],
       ),

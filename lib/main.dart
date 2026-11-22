@@ -4,7 +4,6 @@ import 'package:intertrack_app/theme.dart';
 import 'package:intertrack_app/colors.dart';
 
 import 'package:intertrack_app/models/auth_service.dart';
-import 'package:intertrack_app/models/secure_local_storage.dart';
 
 import 'package:intertrack_app/screens/login_screen.dart';
 import 'package:intertrack_app/screens/dashboard_screen.dart';
@@ -29,7 +28,9 @@ import 'package:intertrack_app/screens/confirmacion_pedido_screen.dart';
 import 'package:intertrack_app/screens/sucursales_screen.dart';
 import 'package:intertrack_app/screens/historial_screen.dart';
 import 'package:intertrack_app/screens/catalogos_screen.dart';
-import 'package:intertrack_app/models/inactividad.dart'; // Asegúrate de que aquí esté el InactividadGuard o el archivo correcto
+import 'package:intertrack_app/models/inactividad.dart';
+import 'package:intertrack_app/screens/asignados_planta.dart';
+import 'package:intertrack_app/screens/existencias_screen.dart';
 
 import 'package:intertrack_app/models/usuario_service.dart';
 final navigatorKey = GlobalKey<NavigatorState>();
@@ -40,7 +41,8 @@ Future<void> main() async {
   await Supabase.initialize(
     url: 'https://qmrviohoksbknkaztsas.supabase.co',
     anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFtcnZpb2hva3Nia25rYXp0c2FzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIzNTIyMTksImV4cCI6MjEwNzkyODIxOX0.FBSG1Fh-7DSqajU7ecAdydL3bZHp9ypjH5a1Qn_20wo',
-    authOptions: FlutterAuthClientOptions(localStorage: SecureLocalStorage()),
+    // Sin sesión guardada: al cerrar la app se pide iniciar sesión de nuevo.
+    authOptions: FlutterAuthClientOptions(localStorage: EmptyLocalStorage()),
   );
 
   // Enlaces del correo: invitación o recuperar contraseña
@@ -137,6 +139,8 @@ class InterTrackApp extends StatelessWidget {
         ),
         '/importar-vista-previa': (_) => const ImportarVistaPreviaScreen(),
         '/catalogos': (_) => const CatalogosScreen(),
+        '/asignados': (_) => const AsignadosPlantaScreen(),
+        '/existencias': (_) => const ExistenciasScreen(),
       },
     );
   }

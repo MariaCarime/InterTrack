@@ -122,6 +122,20 @@ class SolicitudService {
         .toList();
   }
 
+  /// Solicitudes de reposición de stock (no ligadas a un pedido).
+  Future<List<SolicitudDePedido>> deStock({int limite = 15}) async {
+    final datos = await supabase
+        .from('orden_compra')
+        .select(
+        'id_orden, estado_aprobacion, fecha_solicitud, motivo_rechazo, $_seleccionDetalle')
+        .eq('tipo', 'stock')
+        .order('id_orden', ascending: false)
+        .limit(limite);
+    return datos
+        .map<SolicitudDePedido>((j) => SolicitudDePedido.fromJson(j))
+        .toList();
+  }
+
   Future<List<ComentarioSolicitud>> comentarios(int idOrden) async {
     final r = await supabase
         .rpc('comentarios_solicitud', params: {'p_id_orden': idOrden});
