@@ -3,6 +3,8 @@ import 'package:intertrack_app/colors.dart';
 import 'package:intertrack_app/widgets.dart';
 import 'package:intertrack_app/models/pedido.dart';
 import 'package:intertrack_app/models/pedido_service.dart';
+import 'package:intertrack_app/widgets_solicitud.dart';
+import 'package:intertrack_app/screens/registrar_pedido_screen.dart';
 
 /// Etiquetas que se ven en pantalla (mismo orden que kEstadosBd)
 const List<String> kEstadosPedido = [
@@ -49,6 +51,7 @@ class _SeguimientoPedidoScreenState extends State<SeguimientoPedidoScreen> {
   final _servicio = PedidoService();
   Pedido? _pedido;
   List<CambioPedido> _historial = [];
+  bool _enCamion = false;
   bool _cargando = true;
   String? _error;
 
@@ -79,10 +82,17 @@ class _SeguimientoPedidoScreenState extends State<SeguimientoPedidoScreen> {
     try {
       final pedido = await _servicio.obtener(id);
       final historial = await _servicio.historial(id);
+      var enCamion = false;
+      if (!widget.soloLectura) {
+        try {
+          enCamion = await _servicio.tieneMaterialEnCamion(id);
+        } catch (_) {}
+      }
       if (!mounted) return;
       setState(() {
         _pedido = pedido;
         _historial = historial;
+        _enCamion = enCamion;
       });
     } catch (e) {
       if (!mounted) return;
@@ -116,30 +126,63 @@ class _SeguimientoPedidoScreenState extends State<SeguimientoPedidoScreen> {
 
   Future<void> _cancelar() async {
     final p = _pedido!;
+    final motivo = TextEditingController();
     final confirmar = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Cancelar pedido'),
-        content: Text(
-            '¿Seguro que quieres cancelar el pedido ${p.folio}? Esta acción no se puede deshacer.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('No')),
-          TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Sí, cancelar',
-                  style: TextStyle(color: AppColors.rojo))),
-        ],
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setD) => AlertDialog(
+          title: const Text('Cancelar pedido'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                  '¿Cancelar el pedido ${p.folio}? Esta acción no se puede deshacer.'),
+              const SizedBox(height: 12),
+              TextField(
+                controller: motivo,
+                onChanged: (_) => setD(() {}),
+                decoration: const InputDecoration(
+                    labelText: 'Motivo (obligatorio)',
+                    hintText: 'Ej. El cliente ya no lo quiere'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('No')),
+            TextButton(
+                onPressed: motivo.text.trim().isEmpty
+                    ? null
+                    : () => Navigator.pop(ctx, true),
+                child: const Text('Sí, cancelar',
+                    style: TextStyle(color: AppColors.rojo))),
+          ],
+        ),
       ),
     );
+    final texto = motivo.text;
+    motivo.dispose();
     if (confirmar != true) return;
     try {
-      await _servicio.cancelar(p.idPedido);
+      await _servicio.cancelar(p.idPedido, texto);
       await _cargar();
       _mensaje('Pedido cancelado');
     } catch (e) {
       _mensaje(mensajeDeError(e));
+    }
+  }
+
+  Future<void> _editar() async {
+    final p = _pedido!;
+    final guardado = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => RegistrarPedidoScreen(editar: p)),
+    );
+    if (guardado == true) {
+      await _cargar();
+      _mensaje('Pedido actualizado');
     }
   }
 
@@ -191,7 +234,9 @@ class _SeguimientoPedidoScreenState extends State<SeguimientoPedidoScreen> {
 
     // Qué acciones tienen sentido según el estado
     final puedeVerificar = estadoActual == 0 || estadoActual == 2;
-    final puedeCancelar = estadoActual >= 0 && estadoActual <= 3;
+    final puedeCancelar = estadoActual >= 0 && estadoActual <= 3 && !_enCamion;
+    // Editar: solo Pendiente o En Pausa y sin material en camión
+    final puedeEditar = (estadoActual == 0 || estadoActual == 2) && !_enCamion;
 
     return RefreshIndicator(
       onRefresh: _cargar,
@@ -284,6 +329,10 @@ class _SeguimientoPedidoScreenState extends State<SeguimientoPedidoScreen> {
           ),
           const SizedBox(height: 24),
 
+          // Solicitud a Planta (material pedido, estado y comentarios)
+          SolicitudesPedido(
+              key: ValueKey('${_pedido!.estado}-${_historial.length}'),
+              idPedido: _pedido!.idPedido),
           // Historial
           const Text('Historial de cambios',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
@@ -317,6 +366,17 @@ class _SeguimientoPedidoScreenState extends State<SeguimientoPedidoScreen> {
           // Acciones
           if (!widget.soloLectura) ...[
             const SizedBox(height: 20),
+            if (puedeEditar) ...[
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: OutlinedButton(
+                  onPressed: _editar,
+                  child: const Text('Editar pedido'),
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
             Row(
               children: [
                 Expanded(

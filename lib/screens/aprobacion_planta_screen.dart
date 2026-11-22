@@ -3,6 +3,7 @@ import 'package:intertrack_app/colors.dart';
 import 'package:intertrack_app/widgets.dart';
 import 'package:intertrack_app/models/pedido_service.dart';
 import 'package:intertrack_app/models/solicitud_service.dart';
+import 'package:intertrack_app/widgets_solicitud.dart';
 
 class AprobacionPlantaScreen extends StatefulWidget {
   const AprobacionPlantaScreen({super.key});
@@ -87,7 +88,7 @@ class _AprobacionPlantaScreenState extends State<AprobacionPlantaScreen> {
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.all(20),
                 children: [
-                  const Text('Código, cantidad y fecha únicamente',
+                  const Text('Material, cantidad y fecha. Puedes comentar cada solicitud.',
                       style: TextStyle(color: AppColors.gris, fontSize: 13)),
                   const SizedBox(height: 12),
                   if (_cargando)
@@ -155,13 +156,24 @@ class _SolicitudCard extends StatelessWidget {
           for (final l in solicitud.lineas)
             Padding(
               padding: const EdgeInsets.only(bottom: 4),
-              child: Text('${l.codigo}  ·  ${l.cantidad} cajas',
-                  style: const TextStyle(
-                      fontSize: 15, fontWeight: FontWeight.w700)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('${l.codigo}  ·  ${l.cantidad} cajas',
+                      style: const TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w700)),
+                  if ((l.descripcion ?? '').isNotEmpty)
+                    Text(l.descripcion!,
+                        style: const TextStyle(
+                            color: AppColors.gris, fontSize: 12)),
+                ],
+              ),
             ),
           const SizedBox(height: 2),
           Text('Fecha: ${_fecha(solicitud.fecha)}',
               style: const TextStyle(color: AppColors.gris, fontSize: 12)),
+          const SizedBox(height: 10),
+          ComentariosSolicitud(idOrden: solicitud.idOrden),
           const SizedBox(height: 10),
           Row(
             children: [

@@ -5,6 +5,7 @@ import 'package:intertrack_app/models/cliente.dart';
 import 'package:intertrack_app/models/pedido.dart';
 
 const _seleccion = 'id_pedido, folio, documento_erp, fecha, estado, urgente, '
+    'id_cliente, id_asesor, '
     'cliente(nombre), asesor:usuario!id_asesor(nombre), sucursal(nombre), '
     'detalle_pedido(codigo_articulo, cantidad, lote, material(descripcion))';
 
@@ -72,10 +73,41 @@ class PedidoService {
     return (idPedido: fila['o_id_pedido'] as int, folio: fila['o_folio'] as String);
   }
 
-  Future<void> cancelar(int idPedido) async {
-    await supabase
-        .from('pedido')
-        .update({'estado': kEstadoCanceladoBd}).eq('id_pedido', idPedido);
+  /// Cancela con motivo (queda en el historial). Solo si no hay material en un camión.
+  Future<void> cancelar(int idPedido, String motivo) async {
+    await supabase.rpc('cancelar_pedido',
+        params: {'p_id_pedido': idPedido, 'p_motivo': motivo.trim()});
+  }
+
+  /// Edita datos y líneas. Solo en Pendiente o En Pausa y sin material en camión.
+  Future<void> editar({
+    required int idPedido,
+    required int idCliente,
+    required int idAsesor,
+    required String documentoErp,
+    required bool urgente,
+    required List<({String codigo, int cantidad})> lineas,
+  }) async {
+    await supabase.rpc('editar_pedido', params: {
+      'p_id_pedido': idPedido,
+      'p_id_cliente': idCliente,
+      'p_id_asesor': idAsesor,
+      'p_documento_erp': documentoErp,
+      'p_urgente': urgente,
+      'p_lineas': lineas
+          .map((l) => {'codigo_articulo': l.codigo, 'cantidad': l.cantidad})
+          .toList(),
+    });
+  }
+
+  /// true si alguna línea del pedido ya está asignada a un camión.
+  Future<bool> tieneMaterialEnCamion(int idPedido) async {
+    final r = await supabase
+        .from('camion_detalle_pedido')
+        .select('id_camion, detalle_pedido!inner(id_pedido)')
+        .eq('detalle_pedido.id_pedido', idPedido)
+        .limit(1);
+    return r.isNotEmpty;
   }
 
   Future<List<VerificacionLinea>> verificarAsignacion(int idPedido) async {

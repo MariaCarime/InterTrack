@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:intertrack_app/models/etiquetas.dart';
+import 'package:intertrack_app/models/sucursal.dart';
+import 'package:intertrack_app/models/sucursal_service.dart';
 import 'package:intertrack_app/colors.dart';
 import 'package:intertrack_app/widgets.dart';
 import 'package:intertrack_app/models/articulo.dart';
 import 'package:intertrack_app/models/cliente.dart';
+import 'package:intertrack_app/models/pedido.dart';
 import 'package:intertrack_app/models/pedido_service.dart';
-import 'package:intertrack_app/models/etiquetas.dart';
 import 'package:intertrack_app/screens/confirmacion_pedido_screen.dart';
 
 class _LineaForm {
@@ -14,7 +17,9 @@ class _LineaForm {
 }
 
 class RegistrarPedidoScreen extends StatefulWidget {
-  const RegistrarPedidoScreen({super.key});
+  /// Si viene un pedido, la pantalla funciona como edición.
+  final Pedido? editar;
+  const RegistrarPedidoScreen({super.key, this.editar});
 
   @override
   State<RegistrarPedidoScreen> createState() => _RegistrarPedidoScreenState();
@@ -22,34 +27,50 @@ class RegistrarPedidoScreen extends StatefulWidget {
 
 class _RegistrarPedidoScreenState extends State<RegistrarPedidoScreen> {
   final _servicio = PedidoService();
-  final _documentoErp = TextEditingController();
+  final _numeroFactura = TextEditingController();
   final List<_LineaForm> _lineas = [_LineaForm()];
 
   List<Cliente> _clientes = [];
   List<({int id, String nombre})> _asesores = [];
   List<Articulo> _articulos = [];
 
+  List<Sucursal> _sucursales = [];
+
   String? _cliente;
   String? _asesor;
-  bool _urgente = false;
-  bool _cargando = true;
-  bool _guardando = false;
+  String? _sucursalFactura;
 
-  // Getters requeridos para manejar las etiquetas únicas de clientes y asesores
   Map<String, Cliente> get _clientesPorEtiqueta =>
       etiquetasUnicas(_clientes, (c) => c.nombre, (c) => c.contacto ?? '');
   Map<String, ({int id, String nombre})> get _asesoresPorEtiqueta =>
       etiquetasUnicas(_asesores, (a) => a.nombre);
+  Map<String, Sucursal> get _sucursalesPorSigla => {
+    for (final s in _sucursales.where((s) => s.sigla.isNotEmpty))
+      '${s.sigla} · ${s.nombre}': s,
+  };
+
+  String? get _facturaCompleta {
+    final suc = _sucursalesPorSigla[_sucursalFactura];
+    final num = _numeroFactura.text.trim();
+    if (suc == null || num.isEmpty) return null;
+    return '${suc.sigla}-$num';
+  }
+  bool _urgente = false;
+  bool _cargando = true;
+  bool _guardando = false;
+
+  bool get _esEdicion => widget.editar != null;
 
   @override
   void initState() {
     super.initState();
+    _numeroFactura.addListener(() => setState(() {}));
     _cargarOpciones();
   }
 
   @override
   void dispose() {
-    _documentoErp.dispose();
+    _numeroFactura.dispose();
     for (final l in _lineas) {
       l.dispose();
     }
@@ -66,16 +87,86 @@ class _RegistrarPedidoScreenState extends State<RegistrarPedidoScreen> {
       final clientes = await _servicio.clientesActivos();
       final asesores = await _servicio.asesoresActivos();
       final articulos = await _servicio.articulos();
+      final sucursales = await SucursalService().listar();
       if (!mounted) return;
       setState(() {
         _clientes = clientes;
         _asesores = asesores;
         _articulos = articulos;
+        _sucursales = sucursales;
       });
+      if (_esEdicion) _precargar();
     } catch (e) {
       _mensaje('No se pudieron cargar los datos: ${mensajeDeError(e)}');
     } finally {
       if (mounted) setState(() => _cargando = false);
+    }
+  }
+
+  /// Llena el formulario con los datos del pedido que se edita.
+  void _precargar() {
+    final p = widget.editar!;
+    String? etiquetaCliente;
+    for (final e in _clientesPorEtiqueta.entries) {
+      if (e.value.idCliente == p.idCliente) etiquetaCliente = e.key;
+    }
+    String? etiquetaAsesor;
+    for (final e in _asesoresPorEtiqueta.entries) {
+      if (e.value.id == p.idAsesor) etiquetaAsesor = e.key;
+    }
+
+    // Factura = SIGLA-NÚMERO. Si es un dato antiguo sin ese formato, se deja vacío.
+    String? etiquetaSucursal;
+    var numero = '';
+    final doc = p.documentoErp ?? '';
+    final guion = doc.indexOf('-');
+    if (guion > 0) {
+      final sigla = doc.substring(0, guion);
+      numero = doc.substring(guion + 1);
+      for (final e in _sucursalesPorSigla.entries) {
+        if (e.value.sigla == sigla) etiquetaSucursal = e.key;
+      }
+    }
+
+    final lineas = <_LineaForm>[];
+    for (final l in p.lineas) {
+      final f = _LineaForm();
+      for (final a in _articulos) {
+        if (a.codigoArticulo == l.codigoArticulo) f.articulo = a;
+      }
+      f.cantidad.text = l.cantidad.toString();
+      lineas.add(f);
+    }
+
+    setState(() {
+      _cliente = etiquetaCliente;
+      _asesor = etiquetaAsesor;
+      _sucursalFactura = etiquetaSucursal;
+      _numeroFactura.text = numero;
+      _urgente = p.urgente;
+      if (lineas.isNotEmpty) {
+        for (final l in _lineas) {
+          l.dispose();
+        }
+        _lineas
+          ..clear()
+          ..addAll(lineas);
+      }
+    });
+  }
+
+  /// Corre la verificación de asignación sin que nadie tenga que pulsar nada.
+  /// Si falla, el pedido queda Pendiente y se puede verificar desde Seguimiento.
+  Future<String> _verificarAuto(int idPedido) async {
+    try {
+      final r = await _servicio.aplicarVerificacion(idPedido);
+      return switch (r) {
+        'solicitud' => 'Pedido registrado. Solicitud enviada a Planta',
+        'en_pausa' => 'Pedido registrado. Quedó En Pausa por falta de material',
+        _ => 'Pedido registrado y aprobado. Listo para cargar',
+      };
+    } catch (_) {
+      return 'Pedido registrado. No se pudo verificar la asignación; hazlo desde Seguimiento';
     }
   }
 
@@ -86,6 +177,14 @@ class _RegistrarPedidoScreenState extends State<RegistrarPedidoScreen> {
     }
     if (_asesor == null) {
       _mensaje('Selecciona un asesor responsable');
+      return;
+    }
+    if (_sucursalFactura == null) {
+      _mensaje('Selecciona la sucursal de la factura');
+      return;
+    }
+    if (!RegExp(r'^[0-9]+$').hasMatch(_numeroFactura.text.trim())) {
+      _mensaje('Escribe el número de factura (solo dígitos)');
       return;
     }
     final lineas = <({String codigo, int cantidad})>[];
@@ -100,14 +199,30 @@ class _RegistrarPedidoScreenState extends State<RegistrarPedidoScreen> {
 
     setState(() => _guardando = true);
     try {
+      if (_esEdicion) {
+        await _servicio.editar(
+          idPedido: widget.editar!.idPedido,
+          idCliente: _clientesPorEtiqueta[_cliente]!.idCliente,
+          idAsesor: _asesoresPorEtiqueta[_asesor]!.id,
+          documentoErp: _facturaCompleta!,
+          urgente: _urgente,
+          lineas: lineas,
+        );
+        await _verificarAuto(widget.editar!.idPedido);
+        if (!mounted) return;
+        Navigator.pop(context, true);
+        return;
+      }
       final r = await _servicio.crear(
         idCliente: _clientesPorEtiqueta[_cliente]!.idCliente,
         idAsesor: _asesoresPorEtiqueta[_asesor]!.id,
-        documentoErp: _documentoErp.text,
+        documentoErp: _facturaCompleta!,
         urgente: _urgente,
         lineas: lineas,
       );
+      final aviso = await _verificarAuto(r.idPedido);
       if (!mounted) return;
+      _mensaje(aviso);
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -126,10 +241,10 @@ class _RegistrarPedidoScreenState extends State<RegistrarPedidoScreen> {
     return Scaffold(
       body: Column(
         children: [
-          const BlueHeader(
-            onBack: null, // Deja que el botón de volver use la lógica automática que configuramos antes
-            subtitle: 'Gerente de Compras',
-            title: 'Registrar Pedido',
+          BlueHeader(
+            onBack: () => Navigator.pop(context),
+            subtitle: _esEdicion ? 'Pedido ${widget.editar!.folio}' : 'Gerente de Compras',
+            title: _esEdicion ? 'Editar Pedido' : 'Registrar Pedido',
           ),
           Expanded(
             child: _cargando
@@ -143,11 +258,31 @@ class _RegistrarPedidoScreenState extends State<RegistrarPedidoScreen> {
                   enabled: false,
                 ),
                 const SizedBox(height: 16),
-                AppTextField(
-                  label: 'Documento ERP',
-                  hint: 'Número de pedido o factura',
-                  controller: _documentoErp,
+                AppSelectField(
+                  label: 'Sucursal de la factura',
+                  hint: 'Seleccionar sucursal',
+                  options: _sucursalesPorSigla.keys.toList(),
+                  value: _sucursalFactura,
+                  onSelected: (v) => setState(() => _sucursalFactura = v),
+                  emptyMessage:
+                  'Aún no hay sucursales con siglas. El Gerente General debe registrarlas en Catálogos.',
                 ),
+                const SizedBox(height: 16),
+                AppTextField(
+                  label: 'Número de factura',
+                  hint: 'Solo el número, sin las siglas',
+                  controller: _numeroFactura,
+                  keyboardType: TextInputType.number,
+                ),
+                if (_facturaCompleta != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text('Factura: $_facturaCompleta',
+                        style: const TextStyle(
+                            color: AppColors.azul,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600)),
+                  ),
                 const SizedBox(height: 16),
                 AppSelectField(
                   label: 'Cliente',
@@ -252,7 +387,9 @@ class _RegistrarPedidoScreenState extends State<RegistrarPedidoScreen> {
                     TextStyle(color: AppColors.gris, fontSize: 12)),
                 const SizedBox(height: 14),
                 PrimaryButton(
-                  text: _guardando ? 'Guardando...' : 'Guardar pedido',
+                  text: _guardando
+                      ? 'Guardando...'
+                      : (_esEdicion ? 'Guardar cambios' : 'Guardar pedido'),
                   onPressed: _guardando ? null : _guardar,
                 ),
               ],

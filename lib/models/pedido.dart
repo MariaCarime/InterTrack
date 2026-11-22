@@ -31,6 +31,8 @@ class Pedido {
   final String fecha;
   final String estado;
   final bool urgente;
+  final int idCliente;
+  final int idAsesor;
   final String cliente;
   final String asesor;
   final String sucursal;
@@ -43,6 +45,8 @@ class Pedido {
     required this.fecha,
     required this.estado,
     required this.urgente,
+    required this.idCliente,
+    required this.idAsesor,
     required this.cliente,
     required this.asesor,
     required this.sucursal,
@@ -59,6 +63,8 @@ class Pedido {
     fecha: j['fecha'] as String,
     estado: j['estado'] as String,
     urgente: j['urgente'] as bool,
+    idCliente: j['id_cliente'] as int,
+    idAsesor: j['id_asesor'] as int,
     cliente: _nombre(j['cliente']),
     asesor: _nombre(j['asesor']),
     sucursal: _nombre(j['sucursal']),
