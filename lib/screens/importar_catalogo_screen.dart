@@ -1,6 +1,11 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:intertrack_app/colors.dart';
 import 'package:intertrack_app/widgets.dart';
+import 'package:intertrack_app/models/archivos.dart';
+import 'package:intertrack_app/models/importacion.dart';
+import 'package:intertrack_app/screens/importar_vista_previa_screen.dart';
 
 class ImportarCatalogoScreen extends StatefulWidget {
   const ImportarCatalogoScreen({super.key});
@@ -11,24 +16,52 @@ class ImportarCatalogoScreen extends StatefulWidget {
 
 class _ImportarCatalogoScreenState extends State<ImportarCatalogoScreen> {
   String? _archivo; // nombre del archivo elegido
+  Uint8List? _bytes;
 
-  void _seleccionar() {
-    // TODO: con el paquete file_picker, permitir solo ['xlsx', 'csv'] y
-    // guardar los bytes del archivo para la vista previa (pantalla 19b).
-    ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Selector de archivos próximamente')));
+  void _mensaje(String t) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t)));
   }
 
-  void _descargarPlantilla() {
-    // TODO: entregar una plantilla .xlsx con las columnas de abajo.
-    ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Descarga de plantilla próximamente')));
+  Future<void> _seleccionar() async {
+    try {
+      final f = await FilePicker.pickFile(
+        type: FileType.custom,
+        allowedExtensions: ['xlsx', 'csv'],
+      );
+      if (f == null) return; // la persona canceló
+
+      final bytes = await f.readAsBytes();
+      if (bytes.isEmpty) {
+        _mensaje('No se pudo leer el archivo');
+        return;
+      }
+      setState(() {
+        _archivo = f.name;
+        _bytes = bytes;
+      });
+    } catch (_) {
+      _mensaje('No se pudo abrir el selector de archivos');
+    }
+  }
+
+  Future<void> _descargarPlantilla() async {
+    try {
+      final ruta =
+      await guardarArchivo('Plantilla_catalogo.xlsx', construirPlantillaCatalogo());
+      if (ruta != null) _mensaje('Plantilla guardada');
+    } catch (_) {
+      _mensaje('No se pudo guardar la plantilla');
+    }
   }
 
   void _continuar() {
-    // TODO: leer el archivo, validar columnas y filas, y pasar el resultado
-    // real a la vista previa (ResultadoValidacion).
-    Navigator.pushNamed(context, '/importar-vista-previa');
+    final resultado = validarArchivo(_archivo!, _bytes!);
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+          builder: (_) => ImportarVistaPreviaScreen(resultado: resultado)),
+    );
   }
 
   @override
@@ -111,12 +144,18 @@ class _ImportarCatalogoScreenState extends State<ImportarCatalogoScreen> {
                           style: TextStyle(
                               fontSize: 13, fontWeight: FontWeight.w600)),
                       SizedBox(height: 6),
-                      Text('Opcionales: cajas_por_parrilla, unidad_medida',
+                      Text(
+                          'Opcionales: cajas_por_parrilla, unidad_medida, punto_reorden, stock_ideal',
                           style:
                           TextStyle(color: AppColors.gris, fontSize: 12)),
                       SizedBox(height: 6),
                       Text(
                           'Existencias (reemplazan las actuales): bodega, disponible, asignado, remesa, en_produccion',
+                          style:
+                          TextStyle(color: AppColors.gris, fontSize: 12)),
+                      SizedBox(height: 6),
+                      Text(
+                          'Un material puede venir en varias filas, una por bodega.',
                           style:
                           TextStyle(color: AppColors.gris, fontSize: 12)),
                     ],

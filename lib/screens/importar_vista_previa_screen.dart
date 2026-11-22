@@ -1,55 +1,70 @@
 import 'package:flutter/material.dart';
 import 'package:intertrack_app/colors.dart';
 import 'package:intertrack_app/widgets.dart';
+import 'package:intertrack_app/models/archivos.dart';
+import 'package:intertrack_app/models/importacion.dart';
+import 'package:intertrack_app/models/importacio_service.dart';
+import 'package:intertrack_app/models/pedido_service.dart';
 
-class ErrorFila {
-  final int fila;
-  final String mensaje;
-  const ErrorFila(this.fila, this.mensaje);
-}
-
-/// Resultado de validar el archivo. Por defecto está vacío (sin archivo leído).
-class ResultadoValidacion {
-  final String archivo;
-  final int filasLeidas;
-  final int validas;
-  final List<ErrorFila> errores;
-
-  const ResultadoValidacion({
-    this.archivo = 'Nombre del archivo.xlsx',
-    this.filasLeidas = 0,
-    this.validas = 0,
-    this.errores = const [],
-  });
-
-  int get conError => errores.length;
-}
-
-class ImportarVistaPreviaScreen extends StatelessWidget {
+class ImportarVistaPreviaScreen extends StatefulWidget {
   final ResultadoValidacion resultado;
 
   const ImportarVistaPreviaScreen(
       {super.key, this.resultado = const ResultadoValidacion()});
 
-  static const _maxErroresVisibles = 10;
+  @override
+  State<ImportarVistaPreviaScreen> createState() =>
+      _ImportarVistaPreviaScreenState();
+}
 
-  void _importar(BuildContext context) {
-    // TODO: Edge Function de importación: los materiales existentes se
-    // actualizan y los nuevos se crean según codigo_articulo; las existencias
-    // del archivo REEMPLAZAN las actuales. Solo se importan las filas válidas.
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('Importando...')));
+class _ImportarVistaPreviaScreenState extends State<ImportarVistaPreviaScreen> {
+  static const _maxErroresVisibles = 10;
+  bool _importando = false;
+
+  void _mensaje(String t) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t)));
   }
 
-  void _descargarReporte(BuildContext context) {
-    // TODO: generar un archivo con las filas con error y su motivo.
-    ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Descarga del reporte próximamente')));
+  Future<void> _importar() async {
+    setState(() => _importando = true);
+    try {
+      final r = await ImportacionService().importar(widget.resultado.filasValidas);
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Importación terminada'),
+          content: Text(
+              'Materiales nuevos: ${r['nuevos']}\nMateriales actualizados: ${r['actualizados']}\nExistencias cargadas: ${r['existencias']}'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Aceptar')),
+          ],
+        ),
+      );
+      if (!mounted) return;
+      Navigator.pushNamedAndRemoveUntil(context, '/stock', (_) => false);
+    } catch (e) {
+      _mensaje(mensajeDeError(e));
+      if (mounted) setState(() => _importando = false);
+    }
+  }
+
+  Future<void> _descargarReporte() async {
+    try {
+      final ruta = await guardarArchivo(
+          'Reporte_errores.csv', reporteErroresCsv(widget.resultado));
+      if (ruta != null) _mensaje('Reporte guardado');
+    } catch (_) {
+      _mensaje('No se pudo guardar el reporte');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final r = resultado;
+    final r = widget.resultado;
     final visibles = r.errores.take(_maxErroresVisibles).toList();
     final ocultos = r.errores.length - visibles.length;
 
@@ -160,18 +175,18 @@ class ImportarVistaPreviaScreen extends StatelessWidget {
                 const SizedBox(height: 14),
 
                 PrimaryButton(
-                  text: r.validas > 0
+                  text: _importando
+                      ? 'Importando...'
+                      : (r.validas > 0
                       ? 'Importar ${r.validas} filas válidas'
-                      : 'Importar filas válidas',
-                  onPressed: r.validas > 0 ? () => _importar(context) : null,
+                      : 'Importar filas válidas'),
+                  onPressed: (r.validas > 0 && !_importando) ? _importar : null,
                 ),
                 const SizedBox(height: 10),
                 SizedBox(
                   height: 52,
                   child: OutlinedButton(
-                    onPressed: r.errores.isEmpty
-                        ? null
-                        : () => _descargarReporte(context),
+                    onPressed: r.errores.isEmpty ? null : _descargarReporte,
                     style: OutlinedButton.styleFrom(
                       backgroundColor: AppColors.blanco,
                       foregroundColor: AppColors.azul,
