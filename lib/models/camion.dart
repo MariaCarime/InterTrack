@@ -1,318 +1,188 @@
-import 'dart:typed_data';
-import 'package:flutter/material.dart';
-import 'package:intertrack_app/models/archivos.dart';
-import 'package:intertrack_app/colors.dart';
-import 'package:intertrack_app/widgets.dart';
-import 'package:intertrack_app/models/camion.dart';
-import 'package:intertrack_app/models/camion_service.dart';
-import 'package:intertrack_app/models/pedido_service.dart';
-import 'package:intertrack_app/models/trip_pdf.dart';
-import 'package:intertrack_app/models/consulta_service.dart';
+/// Límite por camión: 35 t menos el margen obligatorio. Nunca llega a este valor.
+const double kLimiteToneladas = 34.5;
 
-class DocumentoTripScreen extends StatefulWidget {
-  final int? idCamion;
-  const DocumentoTripScreen({super.key, this.idCamion});
+/// Una línea de un pedido aprobado que todavía tiene cajas por cargar.
+class LineaPorCargar {
+  final int idDetalle;
+  final int idPedido;
+  final String folio;
+  final String cliente;
+  final bool urgente;
+  final String codigo;
+  final String descripcion;
+  final double pesoCaja; // kg
+  final int? cajasPorParrilla;
+  final int total; // cajas del renglón, redondeadas a parrillas completas
+  final int cargado;
+  final int restante;
 
-  @override
-  State<DocumentoTripScreen> createState() => _DocumentoTripScreenState();
+  const LineaPorCargar({
+    required this.idDetalle,
+    required this.idPedido,
+    required this.folio,
+    required this.cliente,
+    required this.urgente,
+    required this.codigo,
+    required this.descripcion,
+    required this.pesoCaja,
+    required this.cajasPorParrilla,
+    required this.total,
+    required this.cargado,
+    required this.restante,
+  });
+
+  factory LineaPorCargar.fromJson(Map<String, dynamic> j) => LineaPorCargar(
+    idDetalle: j['o_id_detalle'] as int,
+    idPedido: j['o_id_pedido'] as int,
+    folio: j['o_folio'] as String,
+    cliente: j['o_cliente'] as String,
+    urgente: j['o_urgente'] as bool,
+    codigo: j['o_codigo'] as String,
+    descripcion: j['o_descripcion'] as String,
+    pesoCaja: (j['o_peso_caja'] as num).toDouble(),
+    cajasPorParrilla: j['o_cajas_por_parrilla'] as int?,
+    total: j['o_total'] as int,
+    cargado: j['o_cargado'] as int,
+    restante: j['o_restante'] as int,
+  );
+
+  /// toneladas = cajas × peso_caja ÷ 1000
+  double toneladas(int cajas) => cajas * pesoCaja / 1000;
+
+  /// Cuántas cajas (en parrillas completas) caben sin llegar al límite (34.5 ton).
+  int cajasQueCaben(double toneladasLibres) {
+    final unidad = cajasPorParrilla ?? 1;
+    final kgPorBloque = unidad * pesoCaja;
+    // Se resta un margen mínimo para que el total quede por debajo, no igual.
+    final bloquesMax = (((toneladasLibres * 1000) - 0.001) / kgPorBloque).floor();
+    final bloquesRestantes = restante ~/ unidad;
+    final bloques = bloquesMax < bloquesRestantes ? bloquesMax : bloquesRestantes;
+    return bloques <= 0 ? 0 : bloques * unidad;
+  }
 }
 
-class _DocumentoTripScreenState extends State<DocumentoTripScreen> {
-  final _servicio = CamionService();
-  DatosTrip? _datos;
-  bool _cargando = true;
-  bool _descargando = false;
-  bool _recibiendo = false;
-  String? _error;
+class LineaTripDatos {
+  final String folio;
+  final String codigo;
+  final String descripcion;
+  final int cajas;
+  final int? parrillas;
+  final String? lote;
+  final double toneladas;
+  final String? facturaPo; // factura del pedido (P.O.)
 
-  @override
-  void initState() {
-    super.initState();
-    _cargar();
-  }
+  const LineaTripDatos({
+    required this.folio,
+    required this.codigo,
+    required this.descripcion,
+    required this.cajas,
+    required this.parrillas,
+    required this.lote,
+    required this.toneladas,
+    this.facturaPo,
+  });
+}
 
-  void _mensaje(String t) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t)));
-  }
+/// Todo lo que lleva el documento Trip de un camión.
+class DatosTrip {
+  final int idCamion;
+  final String? origen;
+  final String destino;
+  final String fletera;
+  final double toneladas;
+  final String? rutaPdf;
+  final double? tarifaTonelada;
+  final double? costoFlete;
+  final String? numeroTrip;
+  final String? placas;
+  final String? chofer;
+  final String? economico;
+  final String? sello;
+  final DateTime? fechaRecepcion;
+  final List<LineaTripDatos> lineas;
 
-  Future<void> _cargar() async {
-    final id = widget.idCamion;
-    if (id == null) {
-      setState(() => _cargando = false);
-      return;
-    }
-    setState(() {
-      _cargando = true;
-      _error = null;
-    });
-    try {
-      final datos = await _servicio.datosTrip(id);
-      if (!mounted) return;
-      setState(() => _datos = datos);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _error = mensajeDeError(e));
-    } finally {
-      if (mounted) setState(() => _cargando = false);
-    }
-  }
+  const DatosTrip({
+    required this.idCamion,
+    required this.origen,
+    required this.destino,
+    required this.fletera,
+    required this.toneladas,
+    required this.rutaPdf,
+    this.tarifaTonelada,
+    this.costoFlete,
+    this.numeroTrip,
+    this.placas,
+    this.chofer,
+    this.economico,
+    this.sello,
+    this.fechaRecepcion,
+    required this.lineas,
+  });
 
-  Future<void> _editarEmbarque() async {
-    final d = _datos;
-    if (d == null) return;
-    final trip = TextEditingController(text: d.numeroTrip);
-    final placas = TextEditingController(text: d.placas);
-    final chofer = TextEditingController(text: d.chofer);
-    final economico = TextEditingController(text: d.economico);
-    final sello = TextEditingController(text: d.sello);
+  String get nombreArchivo => 'Trip_$idCamion.pdf';
 
-    InputDecoration campo(String etiqueta) =>
-        InputDecoration(labelText: etiqueta, isDense: true);
-
-    final guardar = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Datos del embarque'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(controller: trip, decoration: campo('Número de Trip')),
-              const SizedBox(height: 10),
-              TextField(controller: placas, decoration: campo('Placas')),
-              const SizedBox(height: 10),
-              TextField(controller: chofer, decoration: campo('Chofer')),
-              const SizedBox(height: 10),
-              TextField(controller: economico, decoration: campo('Número económico')),
-              const SizedBox(height: 10),
-              TextField(controller: sello, decoration: campo('Número de sello')),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancelar')),
-          TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Guardar')),
-        ],
-      ),
-    );
-
-    final valores = (trip.text, placas.text, chofer.text, economico.text, sello.text);
-    for (final c in [trip, placas, chofer, economico, sello]) {
-      c.dispose();
-    }
-    if (guardar != true) return;
-
-    try {
-      await _servicio.guardarEmbarque(
-        d.idCamion,
-        numeroTrip: valores.$1,
-        placas: valores.$2,
-        chofer: valores.$3,
-        economico: valores.$4,
-        sello: valores.$5,
+  factory DatosTrip.fromJson(Map<String, dynamic> j) => DatosTrip(
+    idCamion: j['id_camion'] as int,
+    origen: j['planta_origen'] as String?,
+    destino: j['ship_to'] as String,
+    fletera: ((j['fletera'] as Map?)?['nombre'] as String?) ?? '-',
+    toneladas: (j['toneladas_totales'] as num).toDouble(),
+    rutaPdf: j['ruta_pdf'] as String?,
+    tarifaTonelada: (j['tarifa_tonelada'] as num?)?.toDouble(),
+    costoFlete: (j['costo_flete'] as num?)?.toDouble(),
+    numeroTrip: j['numero_trip'] as String?,
+    placas: j['placas'] as String?,
+    chofer: j['chofer'] as String?,
+    economico: j['economico'] as String?,
+    sello: j['sello'] as String?,
+    fechaRecepcion: j['fecha_recepcion'] == null
+        ? null
+        : DateTime.parse(j['fecha_recepcion'] as String).toLocal(),
+    lineas: ((j['camion_detalle_pedido'] as List?) ?? []).map((c) {
+      final dp = c['detalle_pedido'] as Map<String, dynamic>;
+      final mat = dp['material'] as Map<String, dynamic>;
+      final cajas = c['cantidad_asignada'] as int;
+      final cpp = mat['cajas_por_parrilla'] as int?;
+      final peso = (mat['peso_caja'] as num).toDouble();
+      return LineaTripDatos(
+        folio: ((dp['pedido'] as Map?)?['folio'] as String?) ?? '-',
+        codigo: dp['codigo_articulo'] as String,
+        descripcion: mat['descripcion'] as String,
+        cajas: cajas,
+        parrillas: cpp == null ? null : cajas ~/ cpp,
+        lote: dp['lote'] as String?,
+        toneladas: cajas * peso / 1000,
+        facturaPo: (dp['pedido'] as Map?)?['documento_erp'] as String?,
       );
-      // El PDF guardado quedó con los datos anteriores: se vuelve a generar.
-      final nuevos = await _servicio.datosTrip(d.idCamion);
-      final bytes = await construirTripPdf(nuevos);
-      await _servicio.subirPdf(d.idCamion, bytes);
-      if (mounted) setState(() => _datos = nuevos);
-      _mensaje('Datos del embarque guardados');
-    } catch (e) {
-      _mensaje(mensajeDeError(e));
-    }
-  }
+    }).toList(),
+  );
+}
 
-  Future<void> _recibir() async {
-    final d = _datos;
-    if (d == null) return;
-    final confirmar = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Registrar recepción'),
-        content: Text(
-            '¿El camión ${d.idCamion} ya llegó y se recibió? Los pedidos que viajaban completos en él pasarán a Entregado.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('No')),
-          TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Sí, recibido')),
-        ],
-      ),
-    );
-    if (confirmar != true) return;
-    setState(() => _recibiendo = true);
-    try {
-      final n = await _servicio.recibir(d.idCamion);
-      await _cargar();
-      _mensaje(n == 0
-          ? 'Recepción registrada'
-          : 'Recepción registrada. $n ${n == 1 ? 'pedido pasó' : 'pedidos pasaron'} a Entregado');
-    } catch (e) {
-      _mensaje(mensajeDeError(e));
-    } finally {
-      if (mounted) setState(() => _recibiendo = false);
-    }
-  }
+/// Datos mínimos de un camión para listarlo.
+class CamionResumen {
+  final int idCamion;
+  final String fletera;
+  final String destino;
+  final double toneladas;
+  final DateTime? fechaRecepcion;
 
-  Future<void> _descargar() async {
-    final d = _datos;
-    if (d == null) return;
-    setState(() => _descargando = true);
-    try {
-      Uint8List bytes;
-      try {
-        // Si el PDF ya está guardado en Supabase se usa ese; si no, se genera.
-        bytes = d.rutaPdf != null
-            ? await _servicio.descargarPdf(d.rutaPdf!)
-            : await construirTripPdf(d);
-      } catch (_) {
-        bytes = await construirTripPdf(d);
-      }
-      final ruta = await guardarArchivo(d.nombreArchivo, bytes);
-      if (ruta != null) _mensaje('PDF guardado');
-    } catch (e) {
-      _mensaje('No se pudo abrir el PDF: ${mensajeDeError(e)}');
-    } finally {
-      if (mounted) setState(() => _descargando = false);
-    }
-  }
+  const CamionResumen({
+    required this.idCamion,
+    required this.fletera,
+    required this.destino,
+    required this.toneladas,
+    required this.fechaRecepcion,
+  });
 
-  @override
-  Widget build(BuildContext context) {
-    const gris = TextStyle(color: AppColors.gris, fontSize: 13);
-    final d = _datos;
+  bool get recibido => fechaRecepcion != null;
 
-    return Scaffold(
-      body: Column(
-        children: [
-          BlueHeader(
-            onBack: () => Navigator.pop(context),
-            subtitle: 'Vista previa del documento',
-            title: d?.nombreArchivo ?? 'Trip_XXXX.pdf',
-          ),
-          Expanded(
-            child: _cargando
-                ? const Center(child: CircularProgressIndicator())
-                : _error != null
-                ? ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                EmptyStateCard(
-                    title: 'No se pudo cargar el documento',
-                    message: _error!),
-                TextButton(
-                    onPressed: _cargar,
-                    child: const Text('Reintentar')),
-              ],
-            )
-                : ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: AppColors.blanco,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: AppColors.borde),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('TRIP / PREVIO',
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 12),
-                      Text(
-                          'Origen: ${d?.origen ?? (d == null ? 'Planta de origen' : 'No indicado')}  →  Destino: ${d?.destino ?? 'CEDIS destino'}',
-                          style: gris),
-                      const SizedBox(height: 8),
-                      Text('Fletera: ${d?.fletera ?? 'Nombre de la fletera'}',
-                          style: gris),
-                      if (d != null) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                            'Trip: ${d.numeroTrip ?? '-'} · Placas: ${d.placas ?? '-'} · Económico: ${d.economico ?? '-'}\nChofer: ${d.chofer ?? '-'} · Sello: ${d.sello ?? '-'}',
-                            style: gris),
-                      ],
-                      const SizedBox(height: 8),
-                      Text(
-                          'Peso total: ${(d?.toneladas ?? 0).toStringAsFixed(1)} / 34.5 ton',
-                          style: gris),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 10),
-                        child: Divider(
-                            height: 1, color: AppColors.borde),
-                      ),
-                      const Text('Materiales incluidos:',
-                          style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 8),
-                      if (d == null || d.lineas.isEmpty)
-                        const Text(
-                            '• F-AAAA-XXXX · Código · Cajas · Parrillas · Lote · Ton',
-                            style: TextStyle(
-                                color: AppColors.gris, fontSize: 12))
-                      else
-                        for (final l in d.lineas)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 6),
-                            child: Text(
-                                '• ${l.folio} · ${l.codigo} · ${l.cajas} cajas · ${l.parrillas ?? '-'} parrillas · ${l.lote ?? '-'} · ${l.toneladas.toStringAsFixed(1)} ton',
-                                style: const TextStyle(
-                                    color: AppColors.gris,
-                                    fontSize: 12)),
-                          ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                PrimaryButton(
-                  text: _descargando ? 'Abriendo...' : 'Descargar PDF',
-                  onPressed:
-                  (d == null || _descargando) ? null : _descargar,
-                ),
-                if (d != null) ...[
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    height: 52,
-                    child: OutlinedButton(
-                      onPressed: _editarEmbarque,
-                      child: const Text('Datos del embarque (placas, chofer, sello…)'),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  if (d.fechaRecepcion != null)
-                    Text('Recibido el ${formatoFechaHora(d.fechaRecepcion!)}',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                            color: AppColors.verde,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600))
-                  else
-                    SizedBox(
-                      height: 52,
-                      child: OutlinedButton(
-                        onPressed: _recibiendo ? null : _recibir,
-                        child: Text(_recibiendo
-                            ? 'Registrando...'
-                            : 'Marcar camión como recibido'),
-                      ),
-                    ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  factory CamionResumen.fromJson(Map<String, dynamic> j) => CamionResumen(
+    idCamion: j['id_camion'] as int,
+    fletera: ((j['fletera'] as Map?)?['nombre'] as String?) ?? '—',
+    destino: (j['ship_to'] as String?) ?? '',
+    toneladas: (j['toneladas_totales'] as num).toDouble(),
+    fechaRecepcion: j['fecha_recepcion'] == null
+        ? null
+        : DateTime.parse(j['fecha_recepcion'] as String).toLocal(),
+  );
 }
