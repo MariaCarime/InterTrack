@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intertrack_app/colors.dart';
+import 'package:intertrack_app/models/pedido_service.dart';
+import 'package:intertrack_app/models/sucursal.dart';
+import 'package:intertrack_app/models/sucursal_service.dart';
 import 'package:intertrack_app/widgets.dart';
-
-class Sucursal {
-  String nombre;
-  String zona;
-  Sucursal(this.nombre, this.zona);
-}
 
 class SucursalesScreen extends StatefulWidget {
   const SucursalesScreen({super.key});
@@ -16,12 +13,35 @@ class SucursalesScreen extends StatefulWidget {
 }
 
 class _SucursalesScreenState extends State<SucursalesScreen> {
-  // TODO: cargar desde Supabase (tabla sucursal).
-  final List<Sucursal> _sucursales = [];
+  final _servicio = SucursalService();
+  List<Sucursal> _sucursales = [];
+  bool _cargando = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  Future<void> _cargar() async {
+    setState(() {
+      _cargando = true;
+      _error = null;
+    });
+    try {
+      final datos = await _servicio.listar();
+      if (mounted) setState(() => _sucursales = datos);
+    } catch (e) {
+      if (mounted) setState(() => _error = mensajeDeError(e));
+    } finally {
+      if (mounted) setState(() => _cargando = false);
+    }
+  }
 
   Future<void> _abrir([Sucursal? editar]) async {
     final existentes = _sucursales
-        .where((s) => s != editar)
+        .where((s) => s.idSucursal != editar?.idSucursal)
         .map((s) => s.nombre.trim().toLowerCase())
         .toList();
 
@@ -31,15 +51,18 @@ class _SucursalesScreenState extends State<SucursalesScreen> {
     );
     if (r == null) return;
 
-    // TODO: insertar o actualizar en Supabase.
-    setState(() {
+    try {
       if (editar == null) {
-        _sucursales.add(Sucursal(r.$1, r.$2));
+        await _servicio.crear(r.$1, r.$2);
       } else {
-        editar.nombre = r.$1;
-        editar.zona = r.$2;
+        await _servicio.actualizar(editar.idSucursal, r.$1, r.$2);
       }
-    });
+      await _cargar();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No se pudo guardar: ${mensajeDeError(e)}')));
+    }
   }
 
   @override
@@ -53,23 +76,35 @@ class _SucursalesScreenState extends State<SucursalesScreen> {
             title: 'Sucursales',
           ),
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                if (_sucursales.isEmpty)
-                  const EmptyStateCard(
-                    title: 'No hay sucursales registradas',
-                    message:
-                    'Registra la primera sucursal para poder asignarla a usuarios y pedidos.',
-                  )
-                else
-                  for (final s in _sucursales)
-                    _SucursalTile(s, onTap: () => _abrir(s)),
-                const SizedBox(height: 16),
-                PrimaryButton(
-                    text: '+ Registrar nueva sucursal',
-                    onPressed: () => _abrir()),
-              ],
+            child: RefreshIndicator(
+              onRefresh: _cargar,
+              child: ListView(
+                padding: const EdgeInsets.all(20),
+                children: [
+                  if (_cargando)
+                    const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else if (_error != null)
+                    EmptyStateCard(
+                        title: 'No se pudieron cargar las sucursales',
+                        message: _error!)
+                  else if (_sucursales.isEmpty)
+                      const EmptyStateCard(
+                        title: 'No hay sucursales registradas',
+                        message:
+                        'Registra la primera sucursal para poder asignarla a usuarios y pedidos.',
+                      )
+                    else
+                      for (final s in _sucursales)
+                        _SucursalTile(s, onTap: () => _abrir(s)),
+                  const SizedBox(height: 16),
+                  PrimaryButton(
+                      text: '+ Registrar nueva sucursal',
+                      onPressed: () => _abrir()),
+                ],
+              ),
             ),
           ),
         ],

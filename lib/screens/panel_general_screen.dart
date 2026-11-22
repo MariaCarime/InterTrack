@@ -1,9 +1,42 @@
 import 'package:flutter/material.dart';
 import 'package:intertrack_app/colors.dart';
+import 'package:intertrack_app/models/consulta_service.dart';
+import 'package:intertrack_app/models/pedido_service.dart';
 import 'package:intertrack_app/widgets.dart';
 
-class PanelGeneralScreen extends StatelessWidget {
+class PanelGeneralScreen extends StatefulWidget {
   const PanelGeneralScreen({super.key});
+
+  @override
+  State<PanelGeneralScreen> createState() => _PanelGeneralScreenState();
+}
+
+class _PanelGeneralScreenState extends State<PanelGeneralScreen> {
+  final _servicio = ConsultaService();
+  MetricasGenerales? _m;
+  bool _cargando = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  Future<void> _cargar() async {
+    setState(() {
+      _cargando = true;
+      _error = null;
+    });
+    try {
+      final m = await _servicio.metricas();
+      if (mounted) setState(() => _m = m);
+    } catch (e) {
+      if (mounted) setState(() => _error = mensajeDeError(e));
+    } finally {
+      if (mounted) setState(() => _cargando = false);
+    }
+  }
 
   void _abrir(BuildContext context, String? ruta) {
     if (ruta == null) {
@@ -11,20 +44,15 @@ class PanelGeneralScreen extends StatelessWidget {
           const SnackBar(content: Text('Disponible próximamente')));
       return;
     }
-    Navigator.pushNamed(context, ruta);
+    Navigator.pushNamed(context, ruta).then((_) => _cargar());
   }
 
   @override
   Widget build(BuildContext context) {
-    // TODO: reemplazar con métricas reales de Supabase.
-    const pedidosMes = 0, urgentes = 0, rechazos = 0;
-
-    // Cuando existan las pantallas, cambia null por su ruta.
+    final m = _m;
     final opciones = <(String, String?)>[
+      ('Registrar pedido', '/registrar'),
       ('Gestión de usuarios y roles', '/usuarios'),
-      ('Catálogo de clientes', '/clientes'),
-      ('Editar información de pedidos', '/reportes'),
-      ('Editar información de stock', '/stock'),
       ('Ver historial completo y auditoría', '/historial'),
     ];
 
@@ -37,47 +65,92 @@ class PanelGeneralScreen extends StatelessWidget {
             trailing: CerrarSesionLink(),
           ),
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                const Row(
-                  children: [
-                    Expanded(
-                        child: _Metrica(
-                            valor: pedidosMes,
-                            etiqueta: 'Pedidos/mes',
-                            color: AppColors.azul)),
-                    SizedBox(width: 10),
-                    Expanded(
-                        child: _Metrica(
-                            valor: urgentes,
-                            etiqueta: 'Urgentes',
-                            color: AppColors.azul)),
-                    SizedBox(width: 10),
-                    Expanded(
-                        child: _Metrica(
-                            valor: rechazos,
-                            etiqueta: 'Rechazos',
-                            color: AppColors.rojo)),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                const Text('Métricas por sucursal',
-                    style:
-                    TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 12),
-                const EmptyStateCard(
-                  title: 'Sin actividad registrada',
-                  message:
-                  'Las métricas por sucursal aparecerán cuando haya pedidos.',
-                ),
-                const SizedBox(height: 20),
-                for (final o in opciones)
-                  _OpcionMenu(
-                      texto: o.$1, onTap: () => _abrir(context, o.$2)),
-              ],
+            child: RefreshIndicator(
+              onRefresh: _cargar,
+              child: ListView(
+                padding: const EdgeInsets.all(20),
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                          child: _Metrica(
+                              valor: m?.pedidosMes ?? 0,
+                              etiqueta: 'Pedidos/mes',
+                              color: AppColors.azul)),
+                      const SizedBox(width: 10),
+                      Expanded(
+                          child: _Metrica(
+                              valor: m?.urgentes ?? 0,
+                              etiqueta: 'Urgentes',
+                              color: AppColors.azul)),
+                      const SizedBox(width: 10),
+                      Expanded(
+                          child: _Metrica(
+                              valor: m?.rechazos ?? 0,
+                              etiqueta: 'Rechazos',
+                              color: AppColors.rojo)),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  const Text('Métricas por sucursal',
+                      style:
+                      TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 12),
+                  if (_cargando)
+                    const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else if (_error != null)
+                    EmptyStateCard(
+                        title: 'No se pudieron cargar las métricas',
+                        message: _error!)
+                  else if (m == null || m.porSucursal.isEmpty)
+                      const EmptyStateCard(
+                        title: 'Sin actividad registrada',
+                        message:
+                        'Las métricas por sucursal aparecerán cuando haya pedidos este mes.',
+                      )
+                    else
+                      for (final s in m.porSucursal) _FilaSucursal(s),
+                  const SizedBox(height: 20),
+                  for (final o in opciones)
+                    _OpcionMenu(
+                        texto: o.$1, onTap: () => _abrir(context, o.$2)),
+                ],
+              ),
             ),
           ),
+        ],
+      ),
+      // 👇 AQUÍ VA LA BARRA INFERIOR QUE SE VE EN LA IMAGEN:
+      bottomNavigationBar: const AppBottomNav(currentIndex: 0),
+    );
+  }
+}
+
+class _FilaSucursal extends StatelessWidget {
+  final MetricaSucursal s;
+  const _FilaSucursal(this.s);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.blanco,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(s.sucursal,
+                style:
+                const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+          ),
+          Text('${s.pedidos} pedidos · ${s.urgentes} urgentes',
+              style: const TextStyle(color: AppColors.gris, fontSize: 12)),
         ],
       ),
     );

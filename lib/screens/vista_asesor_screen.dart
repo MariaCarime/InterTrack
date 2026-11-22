@@ -1,24 +1,47 @@
 import 'package:flutter/material.dart';
 import 'package:intertrack_app/colors.dart';
+import 'package:intertrack_app/models/pedido.dart';
+import 'package:intertrack_app/models/pedido_service.dart';
 import 'package:intertrack_app/widgets.dart';
 import 'package:intertrack_app/screens/seguimiento_pedido_screen.dart';
 
-class PedidoResumen {
-  final String folio;
-  final String cliente;
-  final int estado; // índice en kEstadosPedido; -1 = cancelado
-  const PedidoResumen(this.folio, this.cliente, this.estado);
-}
-
-class VistaAsesorScreen extends StatelessWidget {
+class VistaAsesorScreen extends StatefulWidget {
   const VistaAsesorScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    // TODO: cargar SOLO los pedidos donde pedido.id_usuario sea el asesor
-    // que inició sesión (RLS en Supabase). Horario permitido: 9:00 a 20:00.
-    const pedidos = <PedidoResumen>[];
+  State<VistaAsesorScreen> createState() => _VistaAsesorScreenState();
+}
 
+class _VistaAsesorScreenState extends State<VistaAsesorScreen> {
+  final _servicio = PedidoService();
+  List<Pedido> _pedidos = [];
+  bool _cargando = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  /// Supabase (RLS) solo devuelve los pedidos donde el asesor es el responsable.
+  Future<void> _cargar() async {
+    setState(() {
+      _cargando = true;
+      _error = null;
+    });
+    try {
+      final datos = await _servicio.listar(limite: 200);
+      if (mounted) setState(() => _pedidos = datos);
+    } catch (e) {
+      if (mounted) setState(() => _error = mensajeDeError(e));
+    } finally {
+      if (mounted) setState(() => _cargando = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       body: Column(
         children: [
@@ -28,21 +51,33 @@ class VistaAsesorScreen extends StatelessWidget {
             trailing: CerrarSesionLink(),
           ),
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                const Text('Solo puedes consultar el estado, no editar.',
-                    style: TextStyle(color: AppColors.gris, fontSize: 13)),
-                const SizedBox(height: 12),
-                if (pedidos.isEmpty)
-                  const EmptyStateCard(
-                    title: 'Aún no tienes pedidos',
-                    message:
-                    'Cuando el Gerente de Compras registre un pedido tuyo, podrás seguir su estado aquí.',
-                  )
-                else
-                  for (final p in pedidos) _PedidoTile(p),
-              ],
+            child: RefreshIndicator(
+              onRefresh: _cargar,
+              child: ListView(
+                padding: const EdgeInsets.all(20),
+                children: [
+                  const Text('Solo puedes consultar el estado, no editar.',
+                      style: TextStyle(color: AppColors.gris, fontSize: 13)),
+                  const SizedBox(height: 12),
+                  if (_cargando)
+                    const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else if (_error != null)
+                    EmptyStateCard(
+                        title: 'No se pudieron cargar tus pedidos',
+                        message: _error!)
+                  else if (_pedidos.isEmpty)
+                      const EmptyStateCard(
+                        title: 'Aún no tienes pedidos',
+                        message:
+                        'Cuando el Gerente de Compras registre un pedido tuyo, podrás seguir su estado aquí.',
+                      )
+                    else
+                      for (final p in _pedidos) _PedidoTile(p),
+                ],
+              ),
             ),
           ),
         ],
@@ -52,12 +87,11 @@ class VistaAsesorScreen extends StatelessWidget {
 }
 
 class _PedidoTile extends StatelessWidget {
-  final PedidoResumen p;
+  final Pedido p;
   const _PedidoTile(this.p);
 
   @override
   Widget build(BuildContext context) {
-    final estado = p.estado < 0 ? 'Cancelado' : kEstadosPedido[p.estado];
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Material(
@@ -69,8 +103,7 @@ class _PedidoTile extends StatelessWidget {
             context,
             MaterialPageRoute(
               builder: (_) => SeguimientoPedidoScreen(
-
-              ),
+                  idPedido: p.idPedido, soloLectura: true),
             ),
           ),
           child: Padding(
@@ -89,7 +122,7 @@ class _PedidoTile extends StatelessWidget {
                           style: const TextStyle(
                               color: AppColors.gris, fontSize: 13)),
                       const SizedBox(height: 6),
-                      Text(estado,
+                      Text(p.estado,
                           style: const TextStyle(
                               color: AppColors.azul,
                               fontSize: 12,

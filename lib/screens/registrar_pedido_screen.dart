@@ -4,6 +4,7 @@ import 'package:intertrack_app/widgets.dart';
 import 'package:intertrack_app/models/articulo.dart';
 import 'package:intertrack_app/models/cliente.dart';
 import 'package:intertrack_app/models/pedido_service.dart';
+import 'package:intertrack_app/models/etiquetas.dart';
 import 'package:intertrack_app/screens/confirmacion_pedido_screen.dart';
 
 class _LineaForm {
@@ -33,6 +34,12 @@ class _RegistrarPedidoScreenState extends State<RegistrarPedidoScreen> {
   bool _urgente = false;
   bool _cargando = true;
   bool _guardando = false;
+
+  // Getters requeridos para manejar las etiquetas únicas de clientes y asesores
+  Map<String, Cliente> get _clientesPorEtiqueta =>
+      etiquetasUnicas(_clientes, (c) => c.nombre, (c) => c.contacto ?? '');
+  Map<String, ({int id, String nombre})> get _asesoresPorEtiqueta =>
+      etiquetasUnicas(_asesores, (a) => a.nombre);
 
   @override
   void initState() {
@@ -94,8 +101,8 @@ class _RegistrarPedidoScreenState extends State<RegistrarPedidoScreen> {
     setState(() => _guardando = true);
     try {
       final r = await _servicio.crear(
-        idCliente: _clientes.firstWhere((c) => c.nombre == _cliente).idCliente,
-        idAsesor: _asesores.firstWhere((a) => a.nombre == _asesor).id,
+        idCliente: _clientesPorEtiqueta[_cliente]!.idCliente,
+        idAsesor: _asesoresPorEtiqueta[_asesor]!.id,
         documentoErp: _documentoErp.text,
         urgente: _urgente,
         lineas: lineas,
@@ -119,8 +126,8 @@ class _RegistrarPedidoScreenState extends State<RegistrarPedidoScreen> {
     return Scaffold(
       body: Column(
         children: [
-          BlueHeader(
-            onBack: () => Navigator.pop(context),
+          const BlueHeader(
+            onBack: null, // Deja que el botón de volver use la lógica automática que configuramos antes
             subtitle: 'Gerente de Compras',
             title: 'Registrar Pedido',
           ),
@@ -145,7 +152,7 @@ class _RegistrarPedidoScreenState extends State<RegistrarPedidoScreen> {
                 AppSelectField(
                   label: 'Cliente',
                   hint: 'Seleccionar cliente',
-                  options: _clientes.map((c) => c.nombre).toList(),
+                  options: _clientesPorEtiqueta.keys.toList(),
                   value: _cliente,
                   onSelected: (v) => setState(() => _cliente = v),
                   emptyMessage: 'Aún no hay clientes registrados.',
@@ -154,7 +161,7 @@ class _RegistrarPedidoScreenState extends State<RegistrarPedidoScreen> {
                 AppSelectField(
                   label: 'Asesor responsable',
                   hint: 'Seleccionar asesor',
-                  options: _asesores.map((a) => a.nombre).toList(),
+                  options: _asesoresPorEtiqueta.keys.toList(),
                   value: _asesor,
                   onSelected: (v) => setState(() => _asesor = v),
                   emptyMessage: 'Aún no hay asesores registrados.',
