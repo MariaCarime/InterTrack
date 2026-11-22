@@ -29,9 +29,9 @@ class BlueHeader extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (onBack != null)
+              if (onBack != null || Navigator.canPop(context))
                 GestureDetector(
-                  onTap: onBack,
+                  onTap: onBack ?? () => Navigator.maybePop(context),
                   behavior: HitTestBehavior.opaque,
                   child: const Padding(
                     padding: EdgeInsets.only(bottom: 6),
@@ -280,7 +280,10 @@ class AppBottomNav extends StatelessWidget {
 
   void _ir(BuildContext context, int i) {
     if (i == currentIndex) return;
-    Navigator.pushReplacementNamed(context, _rutas[i]);
+    final ruta = i == 0
+        ? (AuthService.rolActual?.rutaInicial ?? '/dashboard')
+        : _rutas[i];
+    Navigator.pushReplacementNamed(context, ruta);
   }
 
   static const _items = [
