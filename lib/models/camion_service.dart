@@ -45,6 +45,7 @@ class CamionService {
     final dato = await supabase
         .from('camion')
         .select('id_camion, planta_origen, ship_to, toneladas_totales, ruta_pdf, '
+        'tarifa_tonelada, costo_flete, '
         'fletera(nombre), '
         'camion_detalle_pedido(cantidad_asignada, '
         'detalle_pedido(codigo_articulo, lote, '

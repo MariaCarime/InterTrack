@@ -41,9 +41,30 @@ Future<Uint8List> construirTripPdf(DatosTrip t) async {
         pw.Text('Destino: ${t.destino}', style: const pw.TextStyle(fontSize: 11)),
         pw.SizedBox(height: 3),
         pw.Text('Fletera: ${t.fletera}', style: const pw.TextStyle(fontSize: 11)),
+        if (t.numeroTrip != null) ...[
+          pw.SizedBox(height: 3),
+          pw.Text('Trip: ${t.numeroTrip}', style: const pw.TextStyle(fontSize: 11)),
+        ],
+        if (t.placas != null || t.economico != null) ...[
+          pw.SizedBox(height: 3),
+          pw.Text(
+              'Placas: ${t.placas ?? '-'}   Económico: ${t.economico ?? '-'}',
+              style: const pw.TextStyle(fontSize: 11)),
+        ],
+        if (t.chofer != null || t.sello != null) ...[
+          pw.SizedBox(height: 3),
+          pw.Text('Chofer: ${t.chofer ?? '-'}   Sello: ${t.sello ?? '-'}',
+              style: const pw.TextStyle(fontSize: 11)),
+        ],
         pw.SizedBox(height: 3),
-        pw.Text('Peso total: ${t.toneladas.toStringAsFixed(2)} ton (límite: menos de 35 ton)',
+        pw.Text('Peso total: ${t.toneladas.toStringAsFixed(2)} ton (límite: menos de 34.5 ton)',
             style: const pw.TextStyle(fontSize: 11)),
+        if (t.costoFlete != null && t.tarifaTonelada != null) ...[
+          pw.SizedBox(height: 3),
+          pw.Text(
+              'Flete: ${t.toneladas.toStringAsFixed(2)} ton x \$${t.tarifaTonelada!.toStringAsFixed(2)} = \$${t.costoFlete!.toStringAsFixed(2)} + IVA (16%): \$${(t.costoFlete! * 0.16).toStringAsFixed(2)} = Total \$${(t.costoFlete! * 1.16).toStringAsFixed(2)}',
+              style: const pw.TextStyle(fontSize: 11)),
+        ],
         pw.SizedBox(height: 16),
         pw.Table(
           border: pw.TableBorder.all(color: PdfColors.grey500, width: 0.5),
@@ -71,7 +92,7 @@ Future<Uint8List> construirTripPdf(DatosTrip t) async {
             ),
             for (final l in t.lineas)
               pw.TableRow(children: [
-                celda(l.folio),
+                celda(l.facturaPo == null ? l.folio : '${l.folio}\nP.O. ${l.facturaPo}'),
                 celda(l.codigo),
                 celda(l.descripcion),
                 celda('${l.cajas}', align: pw.TextAlign.right),

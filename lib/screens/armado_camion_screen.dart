@@ -9,7 +9,7 @@ import 'package:intertrack_app/models/sucursal.dart';
 import 'package:intertrack_app/models/trip_pdf.dart';
 import 'package:intertrack_app/screens/documento_trip_screen.dart';
 
-/// Regla RF-027: después de las 3:00 PM no se puede subir material.
+/// Regla RF-027: después de las 2:00 PM no se puede subir material.
 /// Pon false SOLO para probar fuera de horario y vuelve a dejarlo en true.
 const bool kAplicarCorte = true;
 
@@ -85,7 +85,7 @@ class _ArmadoCamionScreenState extends State<ArmadoCamionScreen> {
     return m;
   }
 
-  /// Reparte los pedidos en parrillas completas sin llegar a las 35 ton.
+  /// Reparte los pedidos en parrillas completas sin llegar al límite de 34.5 ton.
   ({List<_Asignacion> asignadas, double toneladas}) _calcular(List<int> pedidos) {
     final porPedido = _porPedido;
     final out = <_Asignacion>[];
@@ -102,12 +102,19 @@ class _ArmadoCamionScreenState extends State<ArmadoCamionScreen> {
     return (asignadas: out, toneladas: usadas);
   }
 
-  bool get _pasoCorte => kAplicarCorte && DateTime.now().hour >= 15;
+  String _etiquetaFletera(Fletera f) => f.tarifaTonelada == null
+      ? f.nombre
+      : f.nombre + r' · $' + f.tarifaTonelada!.toStringAsFixed(2) + '/ton';
+
+  Map<String, Fletera> get _fleterasPorEtiqueta =>
+      {for (final f in _fleteras) _etiquetaFletera(f): f};
+
+  bool get _pasoCorte => kAplicarCorte && DateTime.now().hour >= 14;
 
   Future<void> _generar() async {
     final calc = _calcular(_seleccion);
     if (calc.asignadas.isEmpty) return;
-    final idFletera = _fleteras.firstWhere((f) => f.nombre == _fletera).idFletera;
+    final idFletera = _fleterasPorEtiqueta[_fletera]!.idFletera;
 
     setState(() => _generando = true);
     try {
@@ -191,7 +198,7 @@ class _ArmadoCamionScreenState extends State<ArmadoCamionScreen> {
                                       fontSize: 15,
                                       fontWeight: FontWeight.w600)),
                             ),
-                            Text('${t.toStringAsFixed(1)} / 35 ton',
+                            Text('${t.toStringAsFixed(1)} / 34.5 ton',
                                 style: const TextStyle(
                                     color: colorTon,
                                     fontSize: 14,
@@ -220,7 +227,7 @@ class _ArmadoCamionScreenState extends State<ArmadoCamionScreen> {
                           Align(
                             alignment: Alignment.centerLeft,
                             child: Text(
-                                'Disponible: 35 − ${t.toStringAsFixed(1)} = ${(kLimiteToneladas - t).toStringAsFixed(1)} ton',
+                                'Disponible: 34.5 − ${t.toStringAsFixed(1)} = ${(kLimiteToneladas - t).toStringAsFixed(1)} ton',
                                 style: const TextStyle(
                                     fontSize: 13, fontWeight: FontWeight.w700)),
                           ),
@@ -238,7 +245,7 @@ class _ArmadoCamionScreenState extends State<ArmadoCamionScreen> {
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: const Text(
-                        'Corte de carga: 3:00 PM. Después de esa hora no se puede subir material.',
+                        'Corte de carga: 2:00 PM. Después de esa hora no se puede subir material.',
                         style: TextStyle(
                             color: AppColors.naranjaOscuro, fontSize: 12)),
                   ),
@@ -277,7 +284,7 @@ class _ArmadoCamionScreenState extends State<ArmadoCamionScreen> {
                         child: AppSelectField(
                           label: 'Fletera asignada',
                           hint: 'Seleccionar fletera',
-                          options: _fleteras.map((f) => f.nombre).toList(),
+                          options: _fleterasPorEtiqueta.keys.toList(),
                           value: _fletera,
                           onSelected: (v) => setState(() => _fletera = v),
                           emptyMessage: 'Aún no hay fleteras registradas.',
@@ -332,7 +339,7 @@ class _ArmadoCamionScreenState extends State<ArmadoCamionScreen> {
                   ),
                   if (_pasoCorte) ...[
                     const SizedBox(height: 8),
-                    const Text('Ya pasó el corte de las 3:00 PM.',
+                    const Text('Ya pasó el corte de las 2:00 PM.',
                         textAlign: TextAlign.center,
                         style: TextStyle(color: AppColors.rojo, fontSize: 12)),
                   ],
