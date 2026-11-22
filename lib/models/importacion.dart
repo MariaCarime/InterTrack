@@ -262,3 +262,9 @@ List<List<String>> _leerCsv(String texto) {
   }
   return filas;
 }
+
+
+// Funciones públicas para otros importadores (asignados de Planta).
+List<List<String>> leerTablaArchivo(String nombre, Uint8List bytes) =>
+    _leerTabla(nombre, bytes);
+String normalizarEncabezado(String s) => _normalizar(s);

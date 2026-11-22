@@ -5,7 +5,7 @@ import 'package:intertrack_app/models/pedido_service.dart';
 import 'package:intertrack_app/models/stock.dart';
 import 'package:intertrack_app/models/stock_service.dart';
 
-const double _limiteCamion = 35;
+const double _limiteCamion = 34.5;
 
 class GestionStockScreen extends StatefulWidget {
   const GestionStockScreen({super.key});
@@ -135,7 +135,7 @@ class _GestionStockScreenState extends State<GestionStockScreen> {
                                       fontWeight: FontWeight.w700)),
                               const SizedBox(height: 4),
                               Text(
-                                  'Equivale a $camiones ${camiones == 1 ? 'camión' : 'camiones'} (máximo 35 ton por camión)',
+                                  'Equivale a $camiones ${camiones == 1 ? 'camión' : 'camiones'} (máximo 34.5 ton por camión)',
                                   style: const TextStyle(
                                       color: AppColors.gris, fontSize: 12)),
                             ],
@@ -143,6 +143,10 @@ class _GestionStockScreenState extends State<GestionStockScreen> {
                         ),
                       ],
                   const SizedBox(height: 16),
+                  PrimaryButton(
+                      text: 'Asignados de Planta',
+                      onPressed: () => Navigator.pushNamed(context, '/asignados')),
+                  const SizedBox(height: 10),
                   if (!_hayMateriales)
                     PrimaryButton(
                         text: 'Importar catálogo (Excel / CSV)',
