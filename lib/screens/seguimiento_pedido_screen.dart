@@ -4,6 +4,7 @@ import 'package:intertrack_app/widgets.dart';
 import 'package:intertrack_app/models/pedido.dart';
 import 'package:intertrack_app/models/pedido_service.dart';
 import 'package:intertrack_app/widgets_solicitud.dart';
+import 'package:intertrack_app/widgets_camiones.dart';
 import 'package:intertrack_app/screens/registrar_pedido_screen.dart';
 
 /// Etiquetas que se ven en pantalla (mismo orden que kEstadosBd)
@@ -306,77 +307,24 @@ class _SeguimientoPedidoScreenState extends State<SeguimientoPedidoScreen> {
               ],
             ),
           ),
-          const SizedBox(height: 24),
-
-          // Ciclo de vida
-          const Text('Ciclo de vida del pedido',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 14),
-          for (var i = 0; i < kEstadosPedido.length; i++)
-            _PasoEstado(
-              texto: kEstadosPedido[i],
-              color: (!cancelado && i <= estadoActual)
-                  ? AppColors.azul
-                  : AppColors.borde,
-              activo: !cancelado && i == estadoActual,
-              alcanzado: !cancelado && i <= estadoActual,
-            ),
-          _PasoEstado(
-            texto: kEstadoCancelado,
-            color: AppColors.rojo,
-            activo: cancelado,
-            alcanzado: cancelado,
-          ),
-          const SizedBox(height: 24),
-
-          // Solicitud a Planta (material pedido, estado y comentarios)
-          SolicitudesPedido(
-              key: ValueKey('${_pedido!.estado}-${_historial.length}'),
-              idPedido: _pedido!.idPedido),
-          // Historial
-          const Text('Historial de cambios',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppColors.blanco,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (var i = 0; i < _historial.length; i++) ...[
-                  if (i > 0) const SizedBox(height: 12),
-                  Text(
-                      '${_historial[i].descripcion ?? 'Cambio de estado'} → ${_historial[i].estadoNuevo}',
-                      style: const TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.w500)),
-                  const SizedBox(height: 2),
-                  Text(
-                      '${_fecha(_historial[i].fechaHora)} · ${_historial[i].usuario}',
-                      style: const TextStyle(
-                          color: AppColors.gris, fontSize: 12)),
-                ],
-              ],
-            ),
-          ),
-
-          // Acciones
+          // Acciones (arriba, para verlas sin bajar)
           if (!widget.soloLectura) ...[
-            const SizedBox(height: 20),
-            if (puedeEditar) ...[
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: OutlinedButton(
-                  onPressed: _editar,
-                  child: const Text('Editar pedido'),
-                ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: OutlinedButton(
+                onPressed: puedeEditar ? _editar : null,
+                child: const Text('Editar pedido'),
               ),
-              const SizedBox(height: 10),
-            ],
+            ),
+            if (!puedeEditar)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(_motivoNoEditable(_pedido!, estadoActual),
+                    style: const TextStyle(color: AppColors.gris, fontSize: 12)),
+              ),
+            const SizedBox(height: 10),
             Row(
               children: [
                 Expanded(
@@ -409,9 +357,87 @@ class _SeguimientoPedidoScreenState extends State<SeguimientoPedidoScreen> {
               ],
             ),
           ],
+          const SizedBox(height: 24),
+
+          // Ciclo de vida
+          const Text('Ciclo de vida del pedido',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 14),
+          for (var i = 0; i < kEstadosPedido.length; i++)
+            _PasoEstado(
+              texto: kEstadosPedido[i],
+              color: (!cancelado && i <= estadoActual)
+                  ? AppColors.azul
+                  : AppColors.borde,
+              activo: !cancelado && i == estadoActual,
+              alcanzado: !cancelado && i <= estadoActual,
+            ),
+          _PasoEstado(
+            texto: kEstadoCancelado,
+            color: AppColors.rojo,
+            activo: cancelado,
+            alcanzado: cancelado,
+          ),
+          const SizedBox(height: 24),
+
+          // Solicitud a Planta (material pedido, estado y comentarios)
+          SolicitudesPedido(
+              key: ValueKey('${_pedido!.estado}-${_historial.length}'),
+              idPedido: _pedido!.idPedido),
+          // Camiones donde va el material (para abrir el Trip y registrar la recepción)
+          if (!widget.soloLectura) ...[
+            ListaCamiones(
+              key: ValueKey('cam-${_pedido!.estado}'),
+              titulo: 'Camiones de este pedido',
+              cargar: (s) => s.deUnPedido(_pedido!.idPedido),
+              vacio: 'Todavía no tiene material en un camión.',
+            ),
+            const SizedBox(height: 20),
+          ],
+          // Historial
+          const Text('Historial de cambios',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.blanco,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var i = 0; i < _historial.length; i++) ...[
+                  if (i > 0) const SizedBox(height: 12),
+                  Text(
+                      '${_historial[i].descripcion ?? 'Cambio de estado'} → ${_historial[i].estadoNuevo}',
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w500)),
+                  const SizedBox(height: 2),
+                  Text(
+                      '${_fecha(_historial[i].fechaHora)} · ${_historial[i].usuario}',
+                      style: const TextStyle(
+                          color: AppColors.gris, fontSize: 12)),
+                ],
+              ],
+            ),
+          ),
+
         ],
       ),
     );
+  }
+
+  String _motivoNoEditable(Pedido p, int estadoActual) {
+    if (p.estado == kEstadoCanceladoBd) return 'Este pedido está cancelado.';
+    if (_enCamion) {
+      return 'Ya tiene material en un camión, por eso no se puede editar ni cancelar.';
+    }
+    if (estadoActual == 1 || estadoActual == 3) {
+      return 'Solo se edita en Pendiente o En Pausa, porque ya existe una solicitud o aprobación de Planta. Para cambiarlo, cancélalo y regístralo de nuevo.';
+    }
+    return 'Este pedido ya salió y no se puede editar.';
   }
 
   Widget _dato(String texto) => Padding(

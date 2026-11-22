@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intertrack_app/colors.dart';
 import 'package:intertrack_app/widgets.dart';
+import 'package:intertrack_app/widgets_camiones.dart';
 import 'package:intertrack_app/models/camion.dart';
 import 'package:intertrack_app/models/camion_service.dart';
 import 'package:intertrack_app/models/fletera.dart';
@@ -343,6 +344,12 @@ class _ArmadoCamionScreenState extends State<ArmadoCamionScreen> {
                         textAlign: TextAlign.center,
                         style: TextStyle(color: AppColors.rojo, fontSize: 12)),
                   ],
+                  const SizedBox(height: 28),
+                  ListaCamiones(
+                    key: ValueKey('camiones-$_generando'),
+                    titulo: 'Camiones armados',
+                    cargar: (s) => s.recientes(),
+                  ),
                 ],
               ),
             ),
